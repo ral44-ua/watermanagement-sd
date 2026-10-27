@@ -1,0 +1,14 @@
+# Ficheros que genera Python al ejecutar: cada PC crea los suyos, no se suben.
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Entornos virtuales
+.venv/
+venv/
+
+# Base de datos SQLite local de CENTRAL (cada uno tiene la suya)
+*.db
+
+# Variables de entorno con contraseñas o IPs
+.env
