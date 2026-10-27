@@ -73,6 +73,25 @@ def ubicacion_valida(texto: str) -> str:
     return texto.strip()
 
 
+def crear_servidor(puerto: int) -> socket.socket:
+    """Socket servidor que escucha en 'puerto' en todas las interfaces (0.0.0.0).
+
+    Si el puerto ya está ocupado, bind() lanza OSError con un error claro.
+    - Linux: SO_REUSEADDR solo deja reabrir el puerto nada más cerrar el programa
+      (sin esperar al estado TIME_WAIT). Es lo que queremos.
+    - Windows: SO_REUSEADDR permite que DOS programas escuchen en el mismo puerto
+      a la vez (las conexiones van a uno cualquiera). Por eso allí se usa
+      SO_EXCLUSIVEADDRUSE, que hace justo lo contrario: el puerto es solo nuestro.
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):        # solo existe en Windows
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("0.0.0.0", puerto))
+    return srv
+
+
 # ---------------------------------------------------------------------------
 # Monitor
 # ---------------------------------------------------------------------------
@@ -194,11 +213,7 @@ class Monitor:
     # ------------------------------ Engine ------------------------------
 
     def servidor_engine(self, puerto: int) -> None:
-        srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # Permite reabrir el puerto nada más cerrar el Monitor, sin esperar a que
-        # el sistema operativo libere la conexión anterior (estado TIME_WAIT).
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(("0.0.0.0", puerto))         # 0.0.0.0 = acepta conexiones de cualquier interfaz
+        srv = crear_servidor(puerto)
         srv.listen(1)
         # En Windows, un accept() bloqueado no deja que Ctrl+C pare el programa.
         # Con timeout, accept() vuelve cada segundo y Python puede atender el Ctrl+C.

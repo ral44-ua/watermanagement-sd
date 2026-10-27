@@ -13,6 +13,7 @@ import threading
 from datetime import datetime
 
 from common.protocol import ACK, ENQ, enviar_trama, leer_byte, recibir_trama
+from ws.WM_WS_M import crear_servidor
 
 
 def log(texto: str) -> None:
@@ -52,9 +53,11 @@ def main() -> None:
     parser.add_argument("--rechazar", action="store_true", help="responde KO a los AUTH")
     args = parser.parse_args()
 
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("0.0.0.0", args.puerto))
+    try:
+        srv = crear_servidor(args.puerto)     # el mismo que usa el Monitor
+    except OSError as e:
+        log(f"[ERROR] No puedo usar el puerto {args.puerto} ({e}). ¿Hay otro programa usándolo?")
+        return
     srv.listen()
     srv.settimeout(1)                 # para que Ctrl+C funcione también en Windows
     log(f"CENTRAL falso escuchando en el puerto {args.puerto}")
