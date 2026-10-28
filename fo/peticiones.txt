@@ -1,0 +1,5 @@
+# Peticiones de riego para WM_FO --fichero. Una por línea: ESTACIÓN#SEGUNDOS
+# Las líneas vacías y las que empiezan por '#' se ignoran.
+WS-04#10
+WS-11#8
+WS-04#5
