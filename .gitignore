@@ -12,3 +12,4 @@ venv/
 
 # Variables de entorno con contraseñas o IPs
 .env
+.vs/
