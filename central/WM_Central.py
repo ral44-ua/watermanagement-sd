@@ -8,8 +8,9 @@ Uso (desde la raíz del repo):
 Al arrancar:
   1. Inicializa la BD (todas las WS salen DESCONECTADA).
   2. Carga la Red (máquina de estados) con las estaciones de la BD.
-  3. Arranca el servidor de sockets para los Monitores.
-  4. Pinta el panel cada 3 s.
+  3. Arranca la parte Kafka (peticiones, telemetría, avisos, estado de red).
+  4. Arranca el servidor de sockets para los Monitores.
+  5. Pinta el panel cada 3 s.
 """
 
 import argparse
@@ -21,6 +22,7 @@ from datetime import datetime
 
 from central.db import BD
 from central.estados import ORDEN_ESTADOS, Red
+from central.kafka_central import KafkaCentral
 from central.socket_server import ServidorSockets
 
 
@@ -120,11 +122,16 @@ def main():
     central.log(f"CENTRAL arrancada: {len(red.todas())} estaciones en BD "
                 f"(todas DESCONECTADA hasta que conecte su Monitor)")
 
+    # Kafka antes que los sockets: así, cuando se autentique la primera WS,
+    # ya se puede publicar su cambio de estado.
+    central.kafka = KafkaCentral(central, args.broker)
+    central.kafka.arrancar()
+
     ServidorSockets(central, args.puerto).arrancar()
 
     try:
         while True:
-            pintar_panel(central, f"sockets :{args.puerto}")
+            pintar_panel(central, f"sockets :{args.puerto} · Kafka {args.broker}")
             time.sleep(3)
     except KeyboardInterrupt:
         print("\nCENTRAL detenida.")
