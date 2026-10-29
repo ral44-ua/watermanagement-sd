@@ -22,6 +22,12 @@ porque CENTRAL hace "comprobar y reservar" con el lock cogido y, dentro,
 reservar() vuelve a cogerlo. Con un Lock normal, el hilo se bloquearía a sí mismo.
 """
 
+# Permite escribir anotaciones como "str | None" en Python 3.9: con esta línea
+# Python no evalúa las anotaciones al cargar el módulo (las guarda como texto).
+# Sin ella, en 3.9 da "TypeError: unsupported operand type(s) for |".
+# Tiene que ir antes que cualquier otro import.
+from __future__ import annotations
+
 import threading
 import time
 from datetime import datetime, timezone
