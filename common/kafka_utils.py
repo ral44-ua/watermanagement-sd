@@ -31,7 +31,7 @@ def crear_producer(broker: str) -> Producer:
 
 
 def crear_consumer(broker: str, group_id: str, topics: list,
-                   offset: str = "latest") -> Consumer:
+                   offset: str = "latest", extra: dict = None) -> Consumer:
     """Crea un consumidor ya suscrito a la lista de topics.
 
     offset (auto.offset.reset) solo se aplica si el grupo no tiene un offset
@@ -41,13 +41,18 @@ def crear_consumer(broker: str, group_id: str, topics: list,
       - "earliest": desde el principio del log.
     El commit de offsets es automático (opción por defecto de Kafka).
 
+    extra: más opciones de configuración, por ejemplo
+    {"session.timeout.ms": 10000} (lo usa CENTRAL).
+
     Un Consumer NO se puede compartir entre hilos: uno por hilo.
     """
-    consumer = Consumer({
+    config = {
         "bootstrap.servers": broker,
         "group.id": group_id,
         "auto.offset.reset": offset,
-    })
+    }
+    config.update(extra or {})
+    consumer = Consumer(config)
     consumer.subscribe(topics)
     return consumer
 

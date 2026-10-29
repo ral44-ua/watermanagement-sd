@@ -3,13 +3,13 @@ Parte Kafka de CENTRAL: peticiones de riego, órdenes a las WS, telemetría,
 avisos a los operarios y estado de la red (contrato, apartado 2).
 
 Hilos:
-  - consumidor de wm.requests     (group "wm-central")
-  - consumidor de wm.ws.telemetry (group "wm-central")
+  - consumidor de wm.requests y wm.ws.telemetry (group "wm-central")
   - publicador de ESTADO_RED cada 5 s
   - temporizadores de 5 s de las reservas (threading.Timer)
 
 Un único Producer compartido (es seguro usarlo desde varios hilos) y un
-Consumer distinto por hilo (un Consumer NO se puede compartir entre hilos).
+único Consumer para los dos topics, que solo usa su hilo (un Consumer NO se
+puede compartir entre hilos).
 
 Flujo de una petición (flujo B del contrato):
   SOLICITUD_RIEGO -> PASO -> ACEPTADA + START -> STARTED -> PASO "Riego
@@ -17,7 +17,10 @@ Flujo de una petición (flujo B del contrato):
   guardar en BD + RESUMEN al FO.
 """
 
+from __future__ import annotations      # "X | None" en Python 3.9
+
 import threading
+import uuid
 from datetime import datetime, timezone
 
 from wm_central import estados as e
@@ -28,6 +31,7 @@ GROUP_CENTRAL = "wm-central"
 SEG_MAX_PETICION = 30      # peticiones más antiguas se descartan
 SEG_RESERVA = 5            # tiempo máximo esperando STARTED
 SEG_ESTADO_RED = 5         # ESTADO_RED periódico
+SEG_SESION = 10            # session.timeout.ms del consumidor (ver _bucle_consumidor)
 
 
 def antiguedad_s(ts: str) -> float:
@@ -59,36 +63,66 @@ class KafkaCentral:
 
     # ------------------------------------------------------------ arranque
     def arrancar(self) -> None:
-        for topic, procesar in ((m.T_REQUESTS, self.procesar_solicitud),
-                                (m.T_TELEMETRY, self.procesar_telemetria)):
-            threading.Thread(target=self._bucle_consumidor,
-                             args=(topic, procesar), daemon=True).start()
+        self.parar = threading.Event()       # se activa en detener()
+        self.hilo_consumidor = threading.Thread(target=self._bucle_consumidor,
+                                                daemon=True)
+        self.hilo_consumidor.start()
         threading.Thread(target=self._bucle_estado_red, daemon=True).start()
-        self.central.log(f"Kafka: consumidores y productor usando {self.broker}")
+        self.central.log(f"Kafka: conectado a {self.broker}")
 
-    def _bucle_consumidor(self, topic, procesar):
-        # Cada hilo crea SU consumidor. Mismo group.id fijo: si CENTRAL se
-        # reinicia, sigue desde el último offset confirmado (commit automático).
-        consumer = ku.crear_consumer(self.broker, GROUP_CENTRAL, [topic])
-        while True:
-            msg = consumer.poll(1.0)
-            if msg is None:
-                continue
-            if msg.error():
-                self.central.log(f"Kafka ({topic}): {msg.error()}")
-                continue
-            try:
-                procesar(ku.leer(msg))
-            except Exception as ex:
-                # Un mensaje mal formado (por ejemplo, escrito a mano en la
-                # consola) no debe tirar el hilo: se apunta y se sigue.
-                self.central.log(f"Mensaje ignorado en {topic}: {ex!r}")
+    def detener(self) -> None:
+        """Cierre ordenado (Ctrl+C, o docker stop / Railway al redesplegar).
+
+        consumer.close() avisa al bróker de que CENTRAL sale del grupo
+        "wm-central". Sin él, Kafka la sigue dando por viva unos 45 s
+        (session.timeout.ms) y, si CENTRAL se reinicia antes, el consumidor
+        nuevo se queda esperando el reparto de particiones y las peticiones
+        de ese rato no se atienden.
+        """
+        self.parar.set()
+        self.hilo_consumidor.join(timeout=10)
+        self.producer.flush(5)               # que salgan los avisos pendientes
+
+    def _bucle_consumidor(self):
+        # UN solo consumidor para los dos topics que lee CENTRAL. Antes había
+        # dos consumidores (uno por topic) en el mismo grupo: cada uno que
+        # entraba o salía obligaba a Kafka a repartir de nuevo las particiones
+        # de los dos, y mientras tanto nadie leía. Rubén lo vio una vez: CENTRAL
+        # tardó ~100 s en atender peticiones. Con uno solo, el reparto es uno.
+        # group.id fijo: si CENTRAL se reinicia, sigue desde el último offset
+        # confirmado (commit automático). Las peticiones viejas se descartan
+        # por su ts (más de 30 s).
+        #
+        # session.timeout.ms: cuánto tarda Kafka en dar por muerto a un miembro
+        # del grupo que deja de dar señales (45 s por defecto). Si CENTRAL se
+        # cae sin cerrar (se cuelga, se corta la red...) y vuelve a arrancar,
+        # el consumidor nuevo no recibe particiones hasta que Kafka echa al
+        # viejo. Con 10 s, CENTRAL vuelve a atender peticiones mucho antes.
+        procesar = {m.T_REQUESTS: self.procesar_solicitud,
+                    m.T_TELEMETRY: self.procesar_telemetria}
+        consumer = ku.crear_consumer(self.broker, GROUP_CENTRAL, list(procesar),
+                                     extra={"session.timeout.ms": SEG_SESION * 1000})
+        try:
+            while not self.parar.is_set():
+                msg = consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    self.central.log(f"Kafka ({msg.topic()}): {msg.error()}")
+                    continue
+                try:
+                    procesar[msg.topic()](ku.leer(msg))
+                except Exception as ex:
+                    # Un mensaje mal formado (por ejemplo, escrito a mano en la
+                    # consola) no debe tirar el hilo: se apunta y se sigue.
+                    self.central.log(f"Mensaje ignorado en {msg.topic()}: {ex!r}")
+        finally:
+            consumer.close()
 
     def _bucle_estado_red(self):
         # Cada 5 s, para que un FO recién arrancado (con "latest") vea la
         # red enseguida aunque no cambie nada.
-        evento = threading.Event()
-        while not evento.wait(SEG_ESTADO_RED):
+        while not self.parar.wait(SEG_ESTADO_RED):
             try:
                 self.publicar_estado()
             except Exception as ex:
@@ -271,7 +305,20 @@ class KafkaCentral:
                                     f"{self.seg_reserva:g} s")
 
     # ------------------------------------- órdenes del operador de CENTRAL
-    # El menú que las llama llega con el panel, después de los 10 commits.
+    # Punto 11 del enunciado: iniciar un riego, bloquear o activar, para una
+    # WS o para todas. Las llama el panel web (wm_central/panel_web.py).
+    # "Todas" = un mensaje por estación (contrato).
+    def iniciar_riego(self, ws_id, duracion_s) -> None:
+        """Riego pedido desde CENTRAL: mismo camino que el de un operario,
+        pero con origen "CENTRAL" y sin fo_id (no hay operario a quien avisar).
+        """
+        self.solicitar(str(uuid.uuid4()), ws_id, duracion_s, origen="CENTRAL")
+
+    def iniciar_todas(self, duracion_s) -> None:
+        # Las que no estén DISPONIBLE se deniegan y queda en el log por qué.
+        for est in self.central.red.todas():
+            self.iniciar_riego(est.ws_id, duracion_s)
+
     def bloquear_ws(self, ws_id) -> bool:
         est = self.central.red.get(ws_id)
         if est is None:
