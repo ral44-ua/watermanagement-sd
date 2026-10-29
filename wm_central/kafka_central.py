@@ -63,6 +63,15 @@ class KafkaCentral:
 
     # ------------------------------------------------------------ arranque
     def arrancar(self) -> None:
+        # Antes de suscribirse: que existan los 5 topics (ver crear_topics).
+        try:
+            creados = ku.crear_topics(self.broker, m.TOPICS)
+            if creados:
+                self.central.log(f"Kafka: topics creados {creados}")
+        except Exception as ex:
+            # Sin topics CENTRAL funciona a medias, pero no se cae: se avisa
+            # y se pueden crear a mano (scripts/crear_topics.sh).
+            self.central.log(f"AVISO Kafka: no se han podido comprobar los topics ({ex})")
         self.parar = threading.Event()       # se activa en detener()
         self.hilo_consumidor = threading.Thread(target=self._bucle_consumidor,
                                                 daemon=True)

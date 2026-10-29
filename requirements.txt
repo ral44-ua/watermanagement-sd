@@ -1,0 +1,4 @@
+# Librerías que necesitan los programas (WM_Central, WM_WS_M, WM_WS_E, WM_FO).
+# Instalar con:  pip install -r requirements.txt
+# Para los tests, además:  pip install pytest
+confluent-kafka==2.16.0
