@@ -2,9 +2,9 @@
 WM_FO · Aplicación del operario de campo (Field Operator).
 
 Uso (siempre desde la raíz del repositorio):
-    python -m fo.WM_FO <ip_broker:puerto> <fo_id> [--fichero RUTA]
-    python -m fo.WM_FO 127.0.0.1:9092 FO-12
-    python -m fo.WM_FO 127.0.0.1:9092 FO-12 --fichero fo/peticiones.txt
+    python -m WM_FO.WM_FO <ip_broker:puerto> <fo_id> [--fichero RUTA]
+    python -m WM_FO.WM_FO 127.0.0.1:9092 FO-12
+    python -m WM_FO.WM_FO 127.0.0.1:9092 FO-12 --fichero WM_FO/peticiones.txt
 
 Qué hace:
   - Pide riegos a CENTRAL publicando SOLICITUD_RIEGO en wm.requests.
@@ -35,7 +35,7 @@ from confluent_kafka import OFFSET_END
 
 from common import kafka_utils as ku
 from common import mensajes as m
-from ws.WM_WS_M import ip_puerto, log      # mismas utilidades que el Monitor y el Engine
+from common.utilidades import ip_puerto, log      # mismas utilidades que el Monitor y el Engine
 
 PAUSA_ENTRE_PETICIONES = 4    # s entre una petición del fichero y la siguiente (enunciado)
 MARGEN_ESPERA = 60            # s de margen, además de la duración, antes de dar una petición por perdida

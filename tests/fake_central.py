@@ -13,7 +13,7 @@ import threading
 from datetime import datetime
 
 from common.protocol import ACK, ENQ, enviar_trama, leer_byte, recibir_trama
-from ws.WM_WS_M import crear_servidor
+from common.utilidades import crear_servidor
 
 
 def log(texto: str) -> None:
