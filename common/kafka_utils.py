@@ -19,7 +19,8 @@ Recordatorio del contrato:
 
 import json
 
-from confluent_kafka import Consumer, Producer
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
+from confluent_kafka.admin import AdminClient, NewTopic
 
 
 def crear_producer(broker: str) -> Producer:
@@ -28,6 +29,37 @@ def crear_producer(broker: str) -> Producer:
     Un mismo Producer se puede compartir entre hilos.
     """
     return Producer({"bootstrap.servers": broker})
+
+
+def crear_topics(broker: str, topics: list, particiones: int = 3,
+                 espera_s: float = 10) -> list:
+    """Crea en el bróker los topics que falten. Devuelve los que ha creado.
+
+    Por qué: si un consumidor se suscribe a un topic que todavía no existe,
+    Kafka no lo crea (los consumidores no crean topics) y el consumidor no lo
+    ve hasta que vuelve a pedir la lista de topics, cada 5 minutos. En un Kafka
+    recién desplegado (por ejemplo, en Railway) CENTRAL estaría ese rato sin
+    atender peticiones. CENTRAL llama a esta función al arrancar.
+
+    replication_factor=1: solo hay un bróker, no puede haber más copias.
+    Si otro programa crea el mismo topic a la vez, Kafka responde
+    TOPIC_ALREADY_EXISTS: no es un error, el topic ya está.
+    """
+    admin = AdminClient({"bootstrap.servers": broker})
+    existentes = admin.list_topics(timeout=espera_s).topics
+    nuevos = [NewTopic(t, num_partitions=particiones, replication_factor=1)
+              for t in topics if t not in existentes]
+    creados = []
+    if not nuevos:
+        return creados
+    for topic, futuro in admin.create_topics(nuevos, request_timeout=espera_s).items():
+        try:
+            futuro.result()          # espera a que el bróker conteste
+            creados.append(topic)
+        except KafkaException as ex:
+            if ex.args[0].code() != KafkaError.TOPIC_ALREADY_EXISTS:
+                raise
+    return creados
 
 
 def crear_consumer(broker: str, group_id: str, topics: list,

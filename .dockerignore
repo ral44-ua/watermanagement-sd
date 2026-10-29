@@ -1,0 +1,14 @@
+# Lo que NO se copia al construir las imágenes (el contexto es la raíz del repo).
+# Imágenes más pequeñas y builds más rápidos; y nunca se cuela una BD local.
+.git
+.venv
+venv
+.vs
+.vscode
+**/__pycache__
+**/*.pyc
+.pytest_cache
+*.db
+docs
+prompts
+tests
