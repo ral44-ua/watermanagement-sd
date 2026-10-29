@@ -28,3 +28,10 @@ Contexto que se le dio a la IA: `CONTEXTO.md`, el documento de contratos entre m
 16. «Voy a hacer R4 asi que dime como juntar mi rama con la suya y hazme lo necesario para completar R4» (pasos para fusionar las ramas y ficheros finales de R4)
 
 Qué se hizo con las respuestas: se revisó el código y se probó antes de subirlo (tests con pytest, pruebas a mano con el CENTRAL falso, el Monitor y el Engine, y con Kafka). Las pruebas de R4 detectaron que un Engine reiniciado volvía a ejecutar órdenes START antiguas; se corrigió.
+
+## 2026-10-28 · Claude · Fusión de R4 y R5 (FO)
+
+17. «Metete al repositorio de github y dime como va el proyecto y que me falta a mi como ruben»
+18. «ayudame a fusionar R4 y hacemos R5» (R5: `fo/WM_FO.py`, `fo/peticiones.txt`, `tests/test_fo.py`)
+
+Pruebas de R5: tests de la lectura del fichero con pytest, y prueba completa con Kafka y un CENTRAL falso que contesta a las peticiones (modo fichero con una petición aceptada, una denegada y una línea errónea; modo manual).
