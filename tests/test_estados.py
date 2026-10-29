@@ -1,13 +1,13 @@
 """
-Tests de la máquina de estados (central/estados.py). Sin red ni BD.
+Tests de la máquina de estados (wm_central/estados.py). Sin red ni BD.
 
 Ejecutar desde la raíz:  python -m pytest tests/test_estados.py
 """
 
 import threading
 
-from central import estados as e
-from central.estados import Estacion, Red
+from wm_central import estados as e
+from wm_central.estados import Estacion, Red
 
 
 def ws_disponible():

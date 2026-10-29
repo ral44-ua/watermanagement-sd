@@ -1,7 +1,7 @@
 """Tests de la lectura de peticiones del FO (no necesitan Kafka)."""
 import pytest
 
-from fo.WM_FO import leer_fichero, leer_peticion
+from WM_FO.WM_FO import leer_fichero, leer_peticion
 
 
 def test_peticion_valida():

@@ -14,10 +14,10 @@ import time
 
 import pytest
 
-from central.WM_Central import Central
-from central.db import BD
-from central.estados import Red
-from central.kafka_central import KafkaCentral
+from wm_central.WM_Central import Central
+from wm_central.db import BD
+from wm_central.estados import Red
+from wm_central.kafka_central import KafkaCentral
 from common import mensajes as m
 
 

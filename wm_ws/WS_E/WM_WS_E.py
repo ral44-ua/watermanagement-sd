@@ -2,8 +2,8 @@
 WM_WS_E · Engine de una Watering Station (WS).
 
 Uso (siempre desde la raíz del repositorio):
-    python -m ws.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
-    python -m ws.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
+    python -m wm_ws.WS_E.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
+    python -m wm_ws.WS_E.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
 
 Orden de arranque: primero el Monitor (WM_WS_M) y después el Engine.
 
@@ -44,7 +44,7 @@ from confluent_kafka import OFFSET_END
 from common import kafka_utils as ku
 from common import mensajes as m
 from common.protocol import ACK, ENQ, enviar_trama, leer_byte, peticion, recibir_trama
-from ws.WM_WS_M import ip_puerto, log      # mismas utilidades que el Monitor
+from common.utilidades import ip_puerto, log      # mismas utilidades que el Monitor
 
 TIMEOUT_MONITOR = 5          # s sin recibir HEALTH (llega cada 1 s) = Monitor perdido
 ESPERA_RECONEXION = 3        # s entre intentos de conexión con el Monitor

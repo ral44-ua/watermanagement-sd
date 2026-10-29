@@ -20,7 +20,7 @@ Flujo de una petición (flujo B del contrato):
 import threading
 from datetime import datetime, timezone
 
-from central import estados as e
+from wm_central import estados as e
 from common import kafka_utils as ku
 from common import mensajes as m
 

@@ -2,8 +2,8 @@
 WM_Central: central de control de WaterManagement.
 
 Uso (desde la raíz del repo):
-    python -m central.WM_Central <puerto> <broker ip:puerto> [--bd ruta.db]
-    python -m central.WM_Central 9000 localhost:9092
+    python -m wm_central.WM_Central <puerto> <broker ip:puerto> [--bd ruta.db]
+    python -m wm_central.WM_Central 9000 localhost:9092
 
 Al arrancar:
   1. Inicializa la BD (todas las WS salen DESCONECTADA).
@@ -20,10 +20,10 @@ import time
 from collections import deque
 from datetime import datetime
 
-from central.db import BD
-from central.estados import ORDEN_ESTADOS, Red
-from central.kafka_central import KafkaCentral
-from central.socket_server import ServidorSockets
+from wm_central.db import BD
+from wm_central.estados import ORDEN_ESTADOS, Red
+from wm_central.kafka_central import KafkaCentral
+from wm_central.socket_server import ServidorSockets
 
 
 class Central:

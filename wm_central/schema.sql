@@ -2,7 +2,7 @@
 -- "IF NOT EXISTS": se puede ejecutar en cada arranque sin borrar nada.
 
 -- Estaciones de riego. Guardamos 4 banderas independientes (0/1) y el estado
--- que se pinta se calcula a partir de ellas (ver central/estados.py).
+-- que se pinta se calcula a partir de ellas (ver wm_central/estados.py).
 -- "reservada" NO se guarda: es un estado de pocos segundos que solo vive en memoria.
 CREATE TABLE IF NOT EXISTS estaciones (
     ws_id         TEXT PRIMARY KEY,          -- "WS-04"

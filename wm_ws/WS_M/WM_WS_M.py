@@ -2,8 +2,8 @@
 WM_WS_M · Monitor de una Watering Station (WS).
 
 Uso (siempre desde la raíz del repositorio, para que funcione 'from common ...'):
-    python -m ws.WM_WS_M <puerto_engine> <ip_central:puerto> <ws_id> [--ubicacion "..."]
-    python -m ws.WM_WS_M 9100 localhost:9000 WS-04 --ubicacion "River Park"
+    python -m wm_ws.WS_M.WM_WS_M <puerto_engine> <ip_central:puerto> <ws_id> [--ubicacion "..."]
+    python -m wm_ws.WS_M.WM_WS_M 9100 localhost:9000 WS-04 --ubicacion "River Park"
 
 Qué hace:
   1. Se conecta a CENTRAL y se autentica:  ENQ -> ACK,  AUTH#WS-04#River Park -> OK#AUTH.
@@ -27,8 +27,8 @@ import socket
 import sys
 import threading
 import time
-from datetime import datetime
 
+from common.utilidades import crear_servidor, ip_puerto, log
 from common.protocol import ACK, ENQ, EOT, enviar_trama, leer_byte, peticion, recibir_trama
 
 INTERVALO_ALIVE = 2      # s entre ALIVE (CENTRAL desconecta la WS a los 5 s sin ALIVE)
@@ -37,26 +37,9 @@ TIMEOUT_ENGINE = 3       # s sin respuesta del Engine = fuga (contrato)
 TIMEOUT_CENTRAL = 5      # s máximos esperando a CENTRAL antes de darla por caída
 ESPERA_RECONEXION = 3    # s entre intentos de conexión con CENTRAL
 
-_lock_print = threading.Lock()
-
-
-def log(texto: str) -> None:
-    """print con la hora. Lleva lock para que dos hilos no mezclen sus líneas."""
-    with _lock_print:
-        print(f"[{datetime.now():%H:%M:%S}] {texto}", flush=True)
-
-
 # ---------------------------------------------------------------------------
 # Validación de argumentos (argparse llama a estas funciones con el texto tal cual)
 # ---------------------------------------------------------------------------
-
-def ip_puerto(texto: str) -> tuple[str, int]:
-    """'192.168.1.50:9000' -> ('192.168.1.50', 9000)."""
-    ip, sep, puerto = texto.rpartition(":")
-    if not sep or not ip or not puerto.isdigit():
-        raise argparse.ArgumentTypeError(f"'{texto}' no tiene el formato ip:puerto")
-    return ip, int(puerto)
-
 
 def id_ws(texto: str) -> str:
     """Los IDs llevan guion (contrato): WS-04, WS-11..."""
@@ -71,25 +54,6 @@ def ubicacion_valida(texto: str) -> str:
     if not texto.strip() or "#" in texto:
         raise argparse.ArgumentTypeError("la ubicación no puede estar vacía ni contener '#'")
     return texto.strip()
-
-
-def crear_servidor(puerto: int) -> socket.socket:
-    """Socket servidor que escucha en 'puerto' en todas las interfaces (0.0.0.0).
-
-    Si el puerto ya está ocupado, bind() lanza OSError con un error claro.
-    - Linux: SO_REUSEADDR solo deja reabrir el puerto nada más cerrar el programa
-      (sin esperar al estado TIME_WAIT). Es lo que queremos.
-    - Windows: SO_REUSEADDR permite que DOS programas escuchen en el mismo puerto
-      a la vez (las conexiones van a uno cualquiera). Por eso allí se usa
-      SO_EXCLUSIVEADDRUSE, que hace justo lo contrario: el puerto es solo nuestro.
-    """
-    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):        # solo existe en Windows
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
-    else:
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("0.0.0.0", puerto))
-    return srv
 
 
 # ---------------------------------------------------------------------------
