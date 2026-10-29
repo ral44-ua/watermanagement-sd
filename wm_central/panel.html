@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WM_Central · Panel</title>
+<style>
+  /* Colores de fondo de cada estado, los que pide el enunciado. */
+  :root {
+    --verde: #2e9e44; --verde-claro: #7ee08f; --rojo: #d23a32;
+    --naranja: #f28c1b; --gris: #8a8f96;
+    --tinta: #1d2329; --suave: #5b6570; --fondo: #f4f6f8; --borde: #d5dbe1;
+  }
+  body { margin: 0; font-family: system-ui, sans-serif; background: var(--fondo); color: var(--tinta); }
+  header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline;
+           padding: 16px 20px; background: #fff; border-bottom: 1px solid var(--borde); }
+  h1 { margin: 0; font-size: 1.3rem; }
+  #hora, #conexion { color: var(--suave); font-size: .9rem; }
+  main { padding: 16px 20px; max-width: 1100px; }
+  table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
+  th { text-align: left; font-size: .8rem; color: var(--suave); padding: 0 10px; }
+  td { padding: 10px; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.fila td:first-child { border-radius: 6px 0 0 6px; font-weight: 600; }
+  tr.fila td:last-child  { border-radius: 0 6px 6px 0; }
+  .DISPONIBLE td, .RESERVADA td { background: var(--verde); color: #fff; }
+  .FUGA td           { background: var(--rojo); color: #fff; }
+  .FUERA_SERVICIO td { background: var(--naranja); color: var(--tinta); }
+  .DESCONECTADA td   { background: var(--gris); color: #fff; }
+  /* "Verde parpadeando": la fila alterna entre dos verdes cada segundo. */
+  .REGANDO td { animation: parpadeo 1s steps(1) infinite; color: var(--tinta); }
+  @keyframes parpadeo { 0% { background: var(--verde-claro); } 50% { background: var(--verde); color: #fff; } }
+  button { font: inherit; font-size: .85rem; padding: 4px 10px; border-radius: 5px;
+           border: 1px solid var(--borde); background: #fff; color: var(--tinta); cursor: pointer; }
+  button:hover { background: #eef1f4; }
+  .barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 4px;
+           padding: 12px; background: #fff; border: 1px solid var(--borde); border-radius: 8px; }
+  .barra label { color: var(--suave); }
+  input[type=number], select { font: inherit; padding: 3px 6px; }
+  input[type=number] { width: 5em; }
+  #resumen { color: var(--suave); margin: 8px 0 16px; }
+  #mensaje { min-height: 1.4em; margin: 6px 0; font-weight: 600; }
+  #mensaje.error { color: var(--rojo); }
+  h2 { font-size: 1rem; margin: 20px 0 6px; }
+  #eventos { background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 10px 14px;
+             font-family: ui-monospace, monospace; font-size: .85rem; white-space: pre-wrap; margin: 0; }
+  .tabla { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>WM_Central · Red de riego</h1>
+  <span id="hora">--:--:--</span>
+  <span id="conexion"></span>
+</header>
+<main>
+  <!-- Órdenes del punto 11 del enunciado: a una estación o a todas.
+       Están fuera de la tabla porque la tabla se redibuja cada segundo: un
+       botón dentro de ella podría desaparecer justo al hacer clic. -->
+  <div class="barra">
+    <label for="destino">Estación:</label>
+    <select id="destino"><option value="TODAS">Todas</option></select>
+    <label for="duracion">Duración (s):</label>
+    <input id="duracion" type="number" min="1" max="3600" value="30">
+    <button data-orden="iniciar">Iniciar riego</button>
+    <button data-orden="bloquear">Bloquear</button>
+    <button data-orden="activar">Activar</button>
+  </div>
+  <div id="mensaje"></div>
+  <div id="resumen"></div>
+  <div class="tabla">
+    <table>
+      <thead><tr><th>ID</th><th>Ubicación</th><th>Estado</th><th class="num">Caudal (L/min)</th>
+                 <th class="num">Volumen (L)</th><th>Operario</th></tr></thead>
+      <tbody id="filas"></tbody>
+    </table>
+  </div>
+  <h2>Últimos eventos</h2>
+  <pre id="eventos"></pre>
+</main>
+
+<script>
+// Cada segundo se pide /api/estado y se repinta la tabla.
+// Todo el texto se pone con textContent (nunca con innerHTML): la ubicación la
+// escribe quien arranca un Monitor, y con innerHTML podría colar código HTML.
+
+const $ = (id) => document.getElementById(id);
+
+function celda(fila, texto, clase) {
+  const td = document.createElement("td");
+  td.textContent = texto;
+  if (clase) td.className = clase;
+  fila.appendChild(td);
+  return td;
+}
+
+// El desplegable solo se rehace si cambia la lista de estaciones; así no se
+// pierde lo que el usuario tiene elegido.
+let idsAnteriores = "";
+function rellenarDestinos(estaciones) {
+  const ids = estaciones.map((e) => e.ws_id);
+  if (ids.join() === idsAnteriores) return;
+  idsAnteriores = ids.join();
+  const select = $("destino");
+  const elegido = select.value;
+  select.replaceChildren(new Option("Todas", "TODAS"));
+  for (const id of ids) select.add(new Option(id, id));
+  select.value = ids.includes(elegido) ? elegido : "TODAS";
+}
+
+function pintar(foto) {
+  $("hora").textContent = "Actualizado a las " + foto.hora;
+  const etiquetas = {DISPONIBLE: "Disponible", REGANDO: "Regando", RESERVADA: "Reservada",
+                     FUGA: "Fuga", FUERA_SERVICIO: "Fuera de Servicio", DESCONECTADA: "Desconectada"};
+  $("resumen").textContent = Object.entries(foto.resumen)
+      .map(([estado, n]) => etiquetas[estado] + ": " + n).join(" · ");
+
+  const cuerpo = $("filas");
+  cuerpo.replaceChildren();
+  for (const e of foto.estaciones) {
+    const fila = document.createElement("tr");
+    fila.className = "fila " + e.estado;
+    celda(fila, e.ws_id);
+    celda(fila, e.ubicacion);
+    celda(fila, e.etiqueta);
+    celda(fila, e.caudal === null ? "-" : e.caudal.toFixed(1), "num");
+    celda(fila, e.volumen === null ? "-" : e.volumen.toFixed(2), "num");
+    celda(fila, e.operario || "-");
+    cuerpo.appendChild(fila);
+  }
+  if (foto.estaciones.length === 0) {
+    const fila = document.createElement("tr");
+    celda(fila, "No hay estaciones registradas: arranca un WM_WS_M.").colSpan = 6;
+    cuerpo.appendChild(fila);
+  }
+  $("eventos").textContent = foto.eventos.join("\n");
+  rellenarDestinos(foto.estaciones);
+}
+
+async function actualizar() {
+  try {
+    const r = await fetch("/api/estado");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    pintar(await r.json());
+    $("conexion").textContent = "";
+  } catch (err) {
+    $("conexion").textContent = "Sin conexión con CENTRAL (" + err.message + ")";
+  }
+}
+
+// Los tres botones comparten este código: data-orden dice cuál es.
+document.addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-orden]");
+  if (!b) return;
+  const orden = {orden: b.dataset.orden, ws_id: $("destino").value};
+  if (orden.orden === "iniciar") orden.duracion_s = parseInt($("duracion").value, 10);
+  try {
+    const r = await fetch("/api/orden", {method: "POST",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify(orden)});
+    const respuesta = await r.json();
+    $("mensaje").textContent = respuesta.mensaje;
+    $("mensaje").className = respuesta.ok ? "" : "error";
+  } catch (err) {
+    $("mensaje").textContent = "No se ha podido enviar la orden: " + err.message;
+    $("mensaje").className = "error";
+  }
+  actualizar();
+});
+
+actualizar();
+setInterval(actualizar, 1000);
+</script>
+</body>
+</html>
