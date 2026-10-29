@@ -14,3 +14,23 @@ Contexto que se le dio a la IA: `CONTEXTO.md`, el documento de contratos entre m
 5. «Soy David, para que quede mas claro, vuelve a decirme detalladamente paso a paso como empezar y hacer tan solo unos 5 commits segun lo que pone en el archivo 'contexto' que me corresponde hacer, empieza desde que clono el repositorio de github hasta terminar el ultimo commit y guardar todo. acuerdate de explicarlo todo detalladamente y paso a paso, para que se entienda muy claro»
 
 Qué se hizo con la respuesta: se revisó y se probó el código de cada commit (tests con pytest y pruebas a mano con Kafka) antes de subirlo.
+
+## 2026-10-23 · Claude · resumen para el profesor
+
+6. «ayer hice hasta d1 y mi compañero hizo hasta su d4, dime un breve resumen de lo que hemos hecho para decirle al profesor cuando venga a preguntar»
+7. «explicame mas facilmente lo que he hecho ya hasta d1 y que es lo que voy a hacer yo en la practica»
+8. «dime que le digo en 2 o 3 lineas»
+
+## 2026-10-28 · Claude · D2–D5 (subir y probar)
+
+9. «hola, el otro dia hice hasta d1, dime como seguir»
+10. Dudas de Git al subir cada commit: el `git pull` cancelado por `docker-compose.yml`, si los commits iban a `main` o a mi rama, los avisos `LF will be replaced by CRLF`, si podía fusionar yo los pull requests.
+11. El test `test_id_ya_conectado` fallaba en Windows (captura). Causa: `localhost` prueba primero IPv6 y cada conexión tardaba 2 s; se cambió a `127.0.0.1` y se separó el watchdog rápido en su propio test.
+12. Prueba con el Monitor y el Engine de Rubén (flujos A, B, C y D) a partir de capturas de las terminales.
+13. «cuanto me faltaria para terminar?»
+
+## 2026-10-29 · Claude · E1–E3 (panel, Docker y Railway)
+
+14. «mi compañero me ha dicho que ha terminado ya de hacer su parte mira lo que ha hecho el, y teniendo cuenta que ayer terminé con D5 explicame paso a paso igual que la vez anterior como terminar la práctica»
+
+Qué se hizo: compatibilidad con Python 3.9 (aviso de Rubén), panel de consola con colores, panel web con las órdenes del punto 11, un solo consumidor Kafka con cierre ordenado (aviso de Rubén: CENTRAL tardaba ~100 s en atender tras arrancar), creación de topics al arrancar, Dockerfile y guía de Railway. Probado con tests (118, en Python 3.9 y 3.13) y con el Monitor, el Engine y el FO de Rubén sobre un Kafka simulado.
