@@ -107,12 +107,29 @@ def test_monitor_real_que_se_cae_deja_la_ws_averiada(engine):
             if len(conexiones) == 1:
                 conn.close()                       # ¡Ctrl+C en el Monitor!
 
+    # Se apunta cada cambio en vez de mirar engine.monitor_ok cada 50 ms: la
+    # reconexión puede ser tan rápida (en Windows lo es) que el estado AVERIADA
+    # dura menos de lo que tarda el test en volver a mirar.
+    cambios = []
+    perdido, recuperado = engine.monitor_perdido, engine.monitor_recuperado
+
+    def apuntar_perdido():
+        perdido()
+        cambios.append(("perdido", engine.monitor_ok))
+
+    def apuntar_recuperado():
+        recuperado()
+        cambios.append(("recuperado", engine.monitor_ok))
+
+    engine.monitor_perdido = apuntar_perdido
+    engine.monitor_recuperado = apuntar_recuperado
+
     threading.Thread(target=monitor_falso, daemon=True).start()
     sock = engine.conectar_monitor()
     threading.Thread(target=engine.hilo_salud, args=(sock,), daemon=True).start()
-    # Tras la caída: AVERIADA. Tras reconectar (3 s): otra vez bien.
-    assert esperar(lambda: not engine.monitor_ok, 3)
-    assert esperar(lambda: engine.monitor_ok, 6)
+    # Tras la caída: AVERIADA (monitor_ok False). Al reconectar: otra vez bien.
+    assert esperar(lambda: len(cambios) >= 2, 6)
+    assert cambios[:2] == [("perdido", False), ("recuperado", True)]
     srv.close()
 
 
