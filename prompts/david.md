@@ -34,3 +34,12 @@ Qué se hizo con la respuesta: se revisó y se probó el código de cada commit 
 14. «mi compañero me ha dicho que ha terminado ya de hacer su parte mira lo que ha hecho el, y teniendo cuenta que ayer terminé con D5 explicame paso a paso igual que la vez anterior como terminar la práctica»
 
 Qué se hizo: compatibilidad con Python 3.9 (aviso de Rubén), panel de consola con colores, panel web con las órdenes del punto 11, un solo consumidor Kafka con cierre ordenado (aviso de Rubén: CENTRAL tardaba ~100 s en atender tras arrancar), creación de topics al arrancar, Dockerfile y guía de Railway. Probado con tests (118, en Python 3.9 y 3.13) y con el Monitor, el Engine y el FO de Rubén sobre un Kafka simulado.
+
+## 2026-10-30 · Claude · revisión con la guía de corrección
+
+Contexto que se le dio a la IA: la guía de corrección (PDF), el enunciado, el contrato entre módulos y el repositorio.
+
+1. «Comprueba si la practica cumple todos estos requisitos»
+2. «haz lo que se tiene que arreglar y hazme los tests para comprobar y dime que tengo que cambiar y comprobar»
+
+Qué se hizo: Dockerfiles de WM_WS_M, WM_WS_E y WM_FO; README; registro de WS separado del AUTH (REGISTER); alta automática de operarios nuevos; agua total en el panel; aviso a la WS cuando se deniega su riego manual; Engine AVERIADA sin Monitor; riego del Engine guardado en disco y recuperado tras una caída; el FO recibe los avisos atrasados tras reiniciarse; FO y Engine avisan "Imposible conectar con WM_Central"; CENTRAL recupera los riegos en curso tras reiniciarse. Tests nuevos en tests/ (pytest) y prueba con los procesos reales de CENTRAL, Monitor y Engine. Revisado y probado por nosotros antes de fusionar.

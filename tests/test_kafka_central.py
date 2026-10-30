@@ -138,9 +138,10 @@ def test_fuga_llega_antes_que_finished(entorno):
     est = central.red.get("WS-04")
     central.aplicar(est, est.fuga_detectada, motivo="FUGA")   # LEAK primero
     assert prod.ultimo(CMD, "STOP")["motivo"] == "FUGA"
-    tel(central, m.finished("r1", "WS-04", "FUGA", 2.1, 12))  # se ignora
-    assert prod.tipos(NOTIF, "FO-12").count("RESUMEN") == 1
-    assert central.bd.listar_riegos("WS-04")[0]["volumen_total_l"] == 2.0
+    tel(central, m.finished("r1", "WS-04", "FUGA", 2.1, 12))  # llega tarde
+    assert prod.tipos(NOTIF, "FO-12").count("RESUMEN") == 1   # no se repite
+    # Pero el volumen exacto del Engine corrige al de la última telemetría.
+    assert central.bd.listar_riegos("WS-04")[0]["volumen_total_l"] == 2.1
 
 
 # ------------------------------------------------------ flujo D: denegada
@@ -169,8 +170,8 @@ def test_ws_y_operario_que_no_existen(entorno):
     central, prod = entorno
     pedir(central, "r1", ws="WS-99")
     assert "no existe" in prod.ultimo(NOTIF, "DENEGADA")["motivo"]
-    pedir(central, "r2", fo="FO-99")
-    assert "no registrado" in prod.ultimo(NOTIF, "DENEGADA")["motivo"]
+    pedir(central, "r2", fo="OPERARIO-X")              # ID con formato raro
+    assert "no válido" in prod.ultimo(NOTIF, "DENEGADA")["motivo"]
 
 
 def test_peticion_antigua_se_descarta(entorno):

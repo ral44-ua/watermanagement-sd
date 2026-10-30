@@ -2,7 +2,7 @@
 WM_WS_E · Engine de una Watering Station (WS).
 
 Uso (siempre desde la raíz del repositorio):
-    python -m wm_ws.WS_E.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto>
+    python -m wm_ws.WS_E.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto> [--estado CARPETA]
     python -m wm_ws.WS_E.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
 
 Orden de arranque: primero el Monitor (WM_WS_M) y después el Engine.
@@ -16,6 +16,15 @@ Qué hace:
        START, STOP, BLOCK y ACTIVATE.
     4. Con START abre la válvula: publica STARTED, una TELEMETRIA por segundo y,
        al acabar, FINISHED. Si no puede regar, publica START_REJECTED.
+  Resiliencia (guía de corrección):
+    5. Sin Monitor la estación queda AVERIADA: corta el riego en curso y no
+       acepta riegos (ni de CENTRAL ni manuales) hasta que el Monitor vuelva.
+    6. Mientras riega, guarda el riego en disco cada segundo (riego_WS-04.json
+       en --estado). Si el Engine se cae, al volver a arrancar envía el estado
+       final de ese riego a CENTRAL: lo regado no se pierde.
+    7. Lee también wm.ws.status: si CENTRAL deja de publicar el estado de la
+       red, avisa "Imposible conectar con WM_Central".
+    8. Si CENTRAL deniega un riego pedido desde la propia WS, lo muestra.
   Menú de teclado:
     k = simular/reparar avería (si está regando, cierra la válvula: FINISHED con FUGA)
     p = parar el riego (FINISHED con MANUAL)
@@ -33,6 +42,8 @@ Un Producer de Kafka se puede compartir entre hilos; un Consumer no (por eso sol
 lo usa hilo_ordenes, que es quien lo crea).
 """
 import argparse
+import json
+import os
 import random
 import socket
 import threading
@@ -44,7 +55,7 @@ from confluent_kafka import OFFSET_END
 from common import kafka_utils as ku
 from common import mensajes as m
 from common.protocol import ACK, ENQ, enviar_trama, leer_byte, peticion, recibir_trama
-from common.utilidades import ip_puerto, log      # mismas utilidades que el Monitor
+from common.utilidades import VigiaCentral, ip_puerto, log   # mismas utilidades que el Monitor
 
 TIMEOUT_MONITOR = 5          # s sin recibir HEALTH (llega cada 1 s) = Monitor perdido
 ESPERA_RECONEXION = 3        # s entre intentos de conexión con el Monitor
@@ -63,9 +74,13 @@ def saltar_al_final(consumer, particiones) -> None:
 class Riego:
     """Datos del riego en curso. Solo puede haber uno a la vez."""
 
-    def __init__(self, req_id: str, duracion_s: int):
+    def __init__(self, req_id: str, duracion_s: int, fo_id=None, origen=None):
         self.req_id = req_id
         self.duracion_s = duracion_s
+        # Vienen en el START y se repiten en TELEMETRIA y FINISHED: así una
+        # CENTRAL recién reiniciada sabe de quién es el riego (ver mensajes.py).
+        self.fo_id = fo_id
+        self.origen = origen
         # Se activa para cortar el riego antes de tiempo. Es un Event y no un bool
         # porque el hilo de riego puede ESPERARLO: parar.wait(1) duerme 1 s, pero
         # se despierta en el acto si alguien lo activa. Así la válvula se cierra
@@ -76,16 +91,24 @@ class Riego:
 
 
 class Engine:
-    def __init__(self, dir_monitor: tuple, broker: str):
+    def __init__(self, dir_monitor: tuple, broker: str, dir_estado: str = ".",
+                 producer=None):
         self.dir_monitor = dir_monitor
         self.broker = broker                # "ip:puerto", formato que pide Kafka
         self.ws_id = None                   # lo asigna el Monitor en el HELLO
-        self.producer = ku.crear_producer(broker)
+        # producer se puede pasar desde fuera para los tests (uno falso).
+        self.producer = producer or ku.crear_producer(broker)
+        self.dir_estado = dir_estado        # carpeta del fichero del riego en curso
+        self.vigia = VigiaCentral()         # ¿CENTRAL sigue publicando el estado?
 
         self.lock = threading.Lock()
         self.estado_ok = True               # False = avería simulada con 'k'
         self.bloqueada = False              # True tras un BLOCK de CENTRAL
         self.riego = None                   # Riego en curso, o None si la válvula está cerrada
+        # False mientras no hay Monitor: la estación está AVERIADA (guía de
+        # corrección, caso "cae el Monitor"). Sin Monitor nadie vigila la salud
+        # del Engine ni avisa a CENTRAL, así que no es seguro regar.
+        self.monitor_ok = True
         self.saliendo = threading.Event()   # avisa a hilo_ordenes de que hay que terminar
 
     # ----------------------------- Monitor (sockets) -----------------------------
@@ -137,7 +160,25 @@ class Engine:
             except OSError as e:
                 log(f"[AVISO] Monitor perdido ({e})")
                 sock.close()
+                self.monitor_perdido()
             sock = self.conectar_monitor()
+            self.monitor_recuperado()
+
+    def monitor_perdido(self) -> None:
+        """Sin Monitor: AVERIADA. Se corta el riego (lo pide la guía: "si
+        hubiera un riego en marcha este finalizará") y se rechaza todo riego
+        nuevo hasta que vuelva."""
+        with self.lock:
+            self.monitor_ok = False
+            regaba = self._parar_riego("DESCONEXION")
+        log("[AVERIADA] Sin conexión con el Monitor: la estación no admite riegos")
+        if regaba:
+            log("[AVERIADA] Cerrando la válvula del riego en curso")
+
+    def monitor_recuperado(self) -> None:
+        with self.lock:
+            self.monitor_ok = True
+        log("[OK] Monitor recuperado: la estación vuelve a admitir riegos")
 
     # ----------------------------- Kafka: publicar -----------------------------
 
@@ -149,7 +190,7 @@ class Engine:
 
     # ----------------------------- Riego -----------------------------
 
-    def empezar_riego(self, req_id: str, duracion_s: int) -> str:
+    def empezar_riego(self, req_id: str, duracion_s: int, fo_id=None, origen=None) -> str:
         """Abre la válvula si se puede. Devuelve "" si empieza, o el motivo de rechazo.
 
         Comprobar y reservar se hace en el MISMO bloque con lock: si no, entre
@@ -157,13 +198,15 @@ class Engine:
         alguien pulsa 'k' justo en medio) y regaríamos estando en KO.
         """
         with self.lock:
+            if not self.monitor_ok:
+                return "AVERIADA"
             if not self.estado_ok:
                 return "ENGINE_KO"
             if self.bloqueada:
                 return "BLOQUEADA"
             if self.riego is not None:
                 return "YA_REGANDO"
-            riego = self.riego = Riego(req_id, duracion_s)
+            riego = self.riego = Riego(req_id, duracion_s, fo_id, origen)
         threading.Thread(target=self.hilo_riego, args=(riego,), daemon=True).start()
         return ""
 
@@ -187,6 +230,7 @@ class Engine:
 
     def hilo_riego(self, riego: Riego) -> None:
         """Simula el riego: válvula abierta, caudalímetro y telemetría cada segundo."""
+        self.guardar_riego(riego, 0.0, 0)  # en disco desde el primer momento
         self.publicar(m.T_TELEMETRY, m.started(riego.req_id, self.ws_id))
         log(f"[RIEGO] Válvula ABIERTA durante {riego.duracion_s} s (petición {riego.req_id})")
 
@@ -197,8 +241,12 @@ class Engine:
             segundos += 1
             caudal = round(random.uniform(CAUDAL_MIN, CAUDAL_MAX), 1)
             volumen += caudal / 60          # L/min durante 1 s = caudal/60 litros
+            # Primero a disco y después a Kafka: si el Engine muere justo
+            # aquí, lo que está en disco es lo que ya se ha regado.
+            self.guardar_riego(riego, volumen, segundos)
             self.publicar(m.T_TELEMETRY, m.telemetria(
-                riego.req_id, self.ws_id, caudal, round(volumen, 2), segundos))
+                riego.req_id, self.ws_id, caudal, round(volumen, 2), segundos,
+                riego.fo_id, riego.origen))
             log(f"[RIEGO] {segundos:>3}/{riego.duracion_s} s · caudal {caudal:4.1f} L/min"
                 f" · volumen {volumen:6.2f} L")
 
@@ -206,7 +254,11 @@ class Engine:
             riego.parar.set()               # desde aquí, _parar_riego() ya no cambia el motivo
             motivo = riego.motivo or "TIEMPO"
         self.publicar(m.T_TELEMETRY, m.finished(
-            riego.req_id, self.ws_id, motivo, round(volumen, 2), segundos))
+            riego.req_id, self.ws_id, motivo, round(volumen, 2), segundos,
+            riego.fo_id, riego.origen))
+        # FINISHED ya ha salido (enviar() espera la confirmación de Kafka):
+        # el fichero ya no hace falta.
+        self.borrar_riego_guardado()
         # Se libera la válvula DESPUÉS de publicar FINISHED: así el STARTED de un
         # riego nuevo nunca puede salir antes que el FINISHED de este.
         with self.lock:
@@ -214,18 +266,78 @@ class Engine:
         riego.terminado.set()
         log(f"[RIEGO] Válvula CERRADA · motivo {motivo} · {volumen:.2f} L en {segundos} s")
 
+    # ------------------------- Riego guardado en disco -------------------------
+    # Guía de corrección, caso "cae el Engine": "La WS no puede perder lo que
+    # ya se haya regado y, cuando se recupere, debe ser capaz de enviar el
+    # estado final del riego realizado". Lo que está en memoria se pierde al
+    # caerse el programa; lo que está en disco, no.
+
+    def ruta_riego(self) -> str:
+        return os.path.join(self.dir_estado, f"riego_{self.ws_id}.json")
+
+    def guardar_riego(self, riego: Riego, volumen: float, segundos: int) -> None:
+        datos = {"req_id": riego.req_id, "ws_id": self.ws_id, "fo_id": riego.fo_id,
+                 "origen": riego.origen, "duracion_s": riego.duracion_s,
+                 "volumen_l": round(volumen, 2), "segundos": segundos}
+        ruta = self.ruta_riego()
+        temporal = ruta + ".tmp"
+        try:
+            # Se escribe en un fichero aparte y luego se renombra: os.replace
+            # cambia uno por otro de golpe. Si el Engine muriera a mitad de
+            # escribir, el fichero bueno anterior seguiría intacto.
+            with open(temporal, "w", encoding="utf-8") as f:
+                json.dump(datos, f)
+            os.replace(temporal, ruta)
+        except OSError as e:
+            log(f"[AVISO] No se puede guardar el riego en {ruta} ({e})")
+
+    def borrar_riego_guardado(self) -> None:
+        try:
+            os.remove(self.ruta_riego())
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            log(f"[AVISO] No se puede borrar {self.ruta_riego()} ({e})")
+
+    def recuperar_riego_pendiente(self) -> "dict | None":
+        """Al arrancar: si quedó un riego a medias (el Engine se cayó regando),
+        envía su FINISHED con lo que se llegó a regar. Motivo FUGA: un Engine
+        caído es una avería (tabla Monitor_OK y Engine_KO de la guía).
+        Devuelve los datos recuperados (o None si no había nada)."""
+        ruta = self.ruta_riego()
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                datos = json.load(f)
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError) as e:
+            log(f"[AVISO] Fichero de riego {ruta} ilegible, se descarta ({e})")
+            self.borrar_riego_guardado()
+            return None
+        self.publicar(m.T_TELEMETRY, m.finished(
+            datos["req_id"], self.ws_id, "FUGA", datos["volumen_l"], datos["segundos"],
+            datos.get("fo_id"), datos.get("origen")))
+        self.borrar_riego_guardado()
+        log(f"[RECUPERADO] Riego {datos['req_id'][:8]} interrumpido por la caída del Engine: "
+            f"{datos['volumen_l']:.2f} L en {datos['segundos']} s. Estado final enviado a CENTRAL")
+        return datos
+
     # ----------------------------- Kafka: órdenes -----------------------------
 
     def hilo_ordenes(self) -> None:
         """Consume wm.ws.commands. group.id propio (wm-engine-WS-04): cada Engine
         recibe TODOS los mensajes del topic y se queda solo con los de su clave."""
-        consumer = ku.crear_consumer(self.broker, f"wm-engine-{self.ws_id}", [m.T_COMMANDS])
+        # Dos topics con un solo consumidor: las órdenes (wm.ws.commands) y el
+        # estado de la red (wm.ws.status), que solo se usa para saber si
+        # CENTRAL sigue viva (VigiaCentral).
+        topics = [m.T_COMMANDS, m.T_STATUS]
+        consumer = ku.crear_consumer(self.broker, f"wm-engine-{self.ws_id}", topics)
         # "latest" solo se aplica si el grupo NO tiene una posición guardada, pero
         # Kafka guarda la posición sola (auto commit). Al reiniciar el Engine,
         # seguiría donde lo dejó y ejecutaría los START que llegaron mientras
         # estaba apagado (comprobado en las pruebas). Por eso se vuelve a suscribir
         # con on_assign: cuando Kafka le da sus particiones, salta al final.
-        consumer.subscribe([m.T_COMMANDS], on_assign=saltar_al_final)
+        consumer.subscribe(topics, on_assign=saltar_al_final)
         try:
             self._bucle_ordenes(consumer)
         finally:
@@ -247,6 +359,10 @@ class Engine:
             if msg.error():
                 log(f"[AVISO] Kafka: {msg.error()}")
                 continue
+            if msg.topic() == m.T_STATUS:
+                if ku.es_para_mi(msg, m.KEY_RED):
+                    self.vigia.latido()         # CENTRAL está viva
+                continue
             if not ku.es_para_mi(msg, self.ws_id):
                 continue
             try:
@@ -263,7 +379,8 @@ class Engine:
             if not isinstance(duracion, int) or duracion <= 0:
                 motivo = "DURACION_INVALIDA"
             else:
-                motivo = self.empezar_riego(req_id, duracion)
+                motivo = self.empezar_riego(req_id, duracion, orden.get("fo_id"),
+                                            orden.get("origen"))
             if motivo:
                 self.publicar(m.T_TELEMETRY, m.start_rejected(req_id, self.ws_id, motivo))
                 log(f"[RECHAZADO] START {req_id}: {motivo}")
@@ -286,6 +403,11 @@ class Engine:
             with self.lock:
                 self.bloqueada = False
             log("[ORDEN] ACTIVATE: estación activada de nuevo")
+
+        elif tipo == "DENEGADA":
+            # Respuesta de CENTRAL a un riego pedido desde esta WS (opción 'r').
+            log(f"[DENEGADA] CENTRAL rechaza el riego pedido desde la estación "
+                f"(req {orden['req_id'][:8]}): {orden.get('motivo')}")
 
         else:
             log(f"[AVISO] Orden desconocida: {tipo}")
@@ -310,7 +432,9 @@ class Engine:
         """Opción 'r': la estación pide su propio riego. Pasa por CENTRAL igual que
         el de un operario (origen "WS", fo_id null); si lo acepta, llegará un START."""
         with self.lock:
-            if not self.estado_ok:
+            if not self.monitor_ok:
+                problema = "la estación está AVERIADA (sin Monitor)"
+            elif not self.estado_ok:
                 problema = "la estación está en KO"
             elif self.bloqueada:
                 problema = "la estación está fuera de servicio"
@@ -318,6 +442,8 @@ class Engine:
                 problema = "ya está regando"
             else:
                 problema = ""
+        if not problema and not self.vigia.disponible():
+            problema = "Imposible conectar con WM_Central"
         if problema:
             # Se avisa aquí porque, si CENTRAL lo denegara, no hay operario al que
             # notificar y no nos enteraríamos de nada.
@@ -334,10 +460,14 @@ class Engine:
 
     def mostrar_menu(self) -> None:
         with self.lock:
-            salud = "OK" if self.estado_ok else "KO (avería)"
+            if not self.monitor_ok:
+                salud = "AVERIADA (sin Monitor)"
+            else:
+                salud = "OK" if self.estado_ok else "KO (avería)"
             servicio = "FUERA DE SERVICIO" if self.bloqueada else "activa"
             valvula = "REGANDO" if self.riego else "válvula cerrada"
-        log(f"--- WM_WS_E · {self.ws_id} · Salud: {salud} · {servicio} · {valvula} ---")
+        central = "" if self.vigia.disponible() else " · SIN CENTRAL"
+        log(f"--- WM_WS_E · {self.ws_id} · Salud: {salud} · {servicio} · {valvula}{central} ---")
         log("    k = avería on/off   p = parar riego   r = pedir riego   q = salir   (y Enter)")
 
     def bucle_teclado(self) -> None:
@@ -379,15 +509,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="WM_WS_E: Engine de una Watering Station")
     parser.add_argument("broker", type=ip_puerto, help="IP y puerto del broker Kafka (ip:puerto)")
     parser.add_argument("monitor", type=ip_puerto, help="IP y puerto del Monitor de la WS (ip:puerto)")
+    # En Docker: WM_ESTADO_DIR=/datos y un volumen montado ahí, para que el
+    # fichero sobreviva aunque se borre el contenedor.
+    parser.add_argument("--estado", default=os.environ.get("WM_ESTADO_DIR", "."),
+                        help="carpeta donde guardar el riego en curso (por defecto la actual)")
     args = parser.parse_args()
 
     broker = f"{args.broker[0]}:{args.broker[1]}"
-    engine = Engine(args.monitor, broker)
+    engine = Engine(args.monitor, broker, args.estado)
     log(f"=== WM_WS_E · broker Kafka {broker} ===")
     hilo_ordenes = None
     try:
         # Primero el ID: sin él no sabemos qué órdenes de Kafka son nuestras.
         sock = engine.conectar_monitor()
+        # Con el ID ya sabido: ¿quedó un riego a medias de una caída anterior?
+        engine.recuperar_riego_pendiente()
+        engine.vigia.arrancar(engine.saliendo)
         # daemon=True: estos hilos mueren cuando termina el principal.
         threading.Thread(target=engine.hilo_salud, args=(sock,), daemon=True).start()
         hilo_ordenes = threading.Thread(target=engine.hilo_ordenes, daemon=True)

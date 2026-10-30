@@ -13,3 +13,7 @@ venv/
 # Variables de entorno con contraseñas o IPs
 .env
 .vs/
+
+# Riego en curso que guarda el Engine (WM_WS_E --estado)
+riego_WS-*.json
+riego_WS-*.json.tmp

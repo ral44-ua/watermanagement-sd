@@ -52,6 +52,16 @@ def monitor(central):
     return s
 
 
+def entrar(central, ws="WS-04", sitio="River Park"):
+    """Monitor que se da de alta (REGISTER) y se autentica (AUTH), como hace
+    el WM_WS_M de verdad la primera vez. Devuelve el socket ya autenticado."""
+    s = monitor(central)
+    if not central.bd.existe_ws(ws):
+        assert peticion(s, f"REGISTER#{ws}#{sitio}") == ["OK", "REGISTER"]
+    assert peticion(s, f"AUTH#{ws}#{sitio}") == ["OK", "AUTH"]
+    return s
+
+
 def esperar_estado(central, ws_id, estado, segundos=4):
     limite = time.time() + segundos
     while time.time() < limite:
@@ -64,6 +74,7 @@ def esperar_estado(central, ws_id, estado, segundos=4):
 
 def test_flujo_a_autenticacion(central):
     s = monitor(central)
+    assert peticion(s, "REGISTER#WS-04#River Park") == ["OK", "REGISTER"]
     assert peticion(s, "AUTH#WS-04#River Park") == ["OK", "AUTH"]
     assert central.red.get("WS-04").estado_visible() == "DISPONIBLE"
     assert central.bd.existe_ws("WS-04")                 # registrada en BD
@@ -73,8 +84,7 @@ def test_flujo_a_autenticacion(central):
 
 
 def test_id_ya_conectado(central):
-    s1 = monitor(central)
-    peticion(s1, "AUTH#WS-04#River Park")
+    s1 = entrar(central)
     s2 = monitor(central)
     assert peticion(s2, "AUTH#WS-04#River Park") == ["KO", "AUTH", "ID ya conectado"]
     s1.close()
@@ -88,8 +98,7 @@ def test_sin_auth_se_rechaza(central):
 
 
 def test_fuga_y_reparacion(central):
-    s = monitor(central)
-    peticion(s, "AUTH#WS-04#River Park")
+    s = entrar(central)
     assert peticion(s, "LEAK#WS-04#Engine KO") == ["OK", "LEAK"]
     assert central.red.get("WS-04").estado_visible() == "FUGA"
     assert central.bd.listar_estaciones()[0]["fuga"] == 1
@@ -99,25 +108,54 @@ def test_fuga_y_reparacion(central):
 
 
 def test_cerrar_monitor_desconecta(central):
-    s = monitor(central)
-    peticion(s, "AUTH#WS-04#River Park")
+    s = entrar(central)
     s.close()
     assert esperar_estado(central, "WS-04", "DESCONECTADA", 2)
 
 
 def test_sin_alive_desconecta(central_rapida):
-    s = monitor(central_rapida)
-    peticion(s, "AUTH#WS-04#River Park")
+    s = entrar(central_rapida)
     # No mandamos ALIVE: el watchdog (1 s en este test) la desconecta.
     assert esperar_estado(central_rapida, "WS-04", "DESCONECTADA", 4)
     s.close()
 
 
 def test_puede_volver_a_conectarse(central):
-    s = monitor(central)
-    peticion(s, "AUTH#WS-04#River Park")
+    s = entrar(central)
     s.close()
     assert esperar_estado(central, "WS-04", "DESCONECTADA", 2)
-    s = monitor(central)
-    assert peticion(s, "AUTH#WS-04#River Park") == ["OK", "AUTH"]
+    s = entrar(central)                  # ya registrada: solo AUTH
     s.close()
+
+
+# ------------------------------------------- registro (guía: "WS no registrada")
+def test_auth_sin_registrar_se_deniega(central):
+    s = monitor(central)
+    assert peticion(s, "AUTH#WS-04#River Park") == ["KO", "AUTH", "WS no registrada"]
+    assert not central.bd.existe_ws("WS-04")
+    s.close()
+
+
+def test_registrar_dos_veces_se_deniega(central):
+    s = entrar(central)
+    s2 = monitor(central)
+    assert peticion(s2, "REGISTER#WS-04#Otro sitio") == ["KO", "REGISTER", "WS ya registrada"]
+    s.close()
+    s2.close()
+
+
+def test_registro_con_id_invalido(central):
+    s = monitor(central)
+    assert peticion(s, "REGISTER#PEPE#River Park")[:2] == ["KO", "REGISTER"]
+    s.close()
+
+
+def test_registrada_sale_en_el_panel_tras_reiniciar(tmp_path):
+    """Requisito: tras un reinicio, CENTRAL enseña las WS ya registradas como
+    Desconectadas, con su ubicación."""
+    c = crear_central(tmp_path, seg_sin_alive=5)
+    entrar(c).close()
+    c2 = crear_central(tmp_path, seg_sin_alive=5)       # misma BD: "reinicio"
+    est = c2.red.get("WS-04")
+    assert est.ubicacion == "River Park"
+    assert est.estado_visible() == "DESCONECTADA"

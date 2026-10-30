@@ -19,6 +19,7 @@ Flujo de una petición (flujo B del contrato):
 
 from __future__ import annotations      # "X | None" en Python 3.9
 
+import re
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -147,6 +148,17 @@ class KafkaCentral:
         if fo_id:
             self._enviar(m.T_NOTIFICATIONS, fo_id, mensaje)
 
+    def _avisar_ws_denegada(self, origen, req_id, ws_id, motivo):
+        """Si el riego lo pidió la propia WS (menú 'r' del Engine) y se
+        deniega, se lo decimos a su Engine por wm.ws.commands (clave ws_id).
+
+        Antes no se avisaba a nadie: no hay operario, y la WS se quedaba sin
+        saber qué había pasado con su petición. Si se acepta no hace falta
+        aviso: el Engine recibe el START.
+        """
+        if origen == "WS":
+            self._enviar(m.T_COMMANDS, ws_id, m.denegada(req_id, None, ws_id, motivo))
+
     def publicar_estado(self):
         lista = self.central.red.lista_estado()
         self._enviar(m.T_STATUS, m.KEY_RED, m.estado_red(lista))
@@ -156,20 +168,27 @@ class KafkaCentral:
         if d.get("tipo") != "SOLICITUD_RIEGO":
             return
         req_id = d["req_id"]
-        with self.lock_procesadas:
-            if req_id in self.procesadas:
-                return                       # duplicado
-            self.procesadas.add(req_id)
+        # Primero la antigüedad y después el duplicado: una petición vieja que
+        # se descarta NO se apunta como tramitada. Si se apuntara y su riego
+        # siguiera en marcha (CENTRAL reiniciada), no se podría adoptar.
         edad = antiguedad_s(d["ts"])
         if edad > SEG_MAX_PETICION:
             self.central.log(f"Petición {req_id[:8]} descartada: tiene {edad:.0f} s")
             return
+        with self.lock_procesadas:
+            if req_id in self.procesadas:
+                return                       # duplicado
         self.solicitar(req_id, d["ws_id"], d["duracion_s"],
                        d.get("fo_id"), d.get("origen", "FO"))
 
     def solicitar(self, req_id, ws_id, duracion_s, fo_id=None, origen="CENTRAL"):
         """Lógica de una petición de riego. La usan los mensajes de
         wm.requests y, más adelante, el menú de CENTRAL ("iniciar riego")."""
+        # Se apunta aquí (y no solo al leer de Kafka) para que cuente también
+        # el riego pedido desde el panel web: así sabemos que CENTRAL lo
+        # tramitó y nunca se confunde con un riego "desconocido" que adoptar.
+        with self.lock_procesadas:
+            self.procesadas.add(req_id)
         quien = fo_id or origen
         self.central.log(f"Petición de {quien}: {ws_id} durante {duracion_s} s")
         self._notificar(fo_id, m.paso(req_id, fo_id, ws_id,
@@ -178,12 +197,19 @@ class KafkaCentral:
         def denegar(motivo):
             self.central.log(f"Petición de {quien} para {ws_id} DENEGADA: {motivo}")
             self._notificar(fo_id, m.denegada(req_id, fo_id, ws_id, motivo))
+            self._avisar_ws_denegada(origen, req_id, ws_id, motivo)
 
         est = self.central.red.get(ws_id)
         if est is None:
             return denegar(f"La estación {ws_id} no existe")
         if origen == "FO" and not self.central.bd.existe_operario(fo_id):
-            return denegar(f"Operario {fo_id} no registrado")
+            # Un operario nuevo (por ejemplo, un FO-03 que pide el profesor en
+            # la corrección) se da de alta en su primera petición, si su ID
+            # tiene el formato del contrato. Uno con un ID raro se deniega.
+            if not isinstance(fo_id, str) or not re.fullmatch(r"FO-\d+", fo_id):
+                return denegar(f"Operario {fo_id} no válido (formato FO-<número>)")
+            if self.central.bd.registrar_operario(fo_id):
+                self.central.log(f"Operario NUEVO dado de alta: {fo_id}")
         if not isinstance(duracion_s, int) or duracion_s <= 0:
             return denegar("Duración no válida")
 
@@ -207,6 +233,8 @@ class KafkaCentral:
         req_id = d.get("req_id")
 
         if tipo == "STARTED":
+            if self._adoptar_si_desconocido(est, d):
+                return
             acciones = self.central.aplicar(
                 est, est.valvula_abierta, req_id,
                 motivo="Riego no autorizado por CENTRAL")
@@ -217,20 +245,85 @@ class KafkaCentral:
                                               f"Riego iniciado en {est.ws_id}"))
 
         elif tipo == "TELEMETRIA":
-            if est.telemetria(req_id, d["caudal_lpm"], d["volumen_l"], d["segundos"]):
-                fo_id = est.fo_actual
-                self._notificar(fo_id, m.telemetria_fo(
-                    req_id, fo_id, est.ws_id, d["caudal_lpm"], d["volumen_l"]))
+            if not est.telemetria(req_id, d["caudal_lpm"], d["volumen_l"], d["segundos"]):
+                # No es del riego actual. ¿Es un riego en marcha que no
+                # conocemos porque CENTRAL se ha reiniciado? Entonces se adopta.
+                if not self._adoptar_si_desconocido(est, d):
+                    return
+            fo_id = est.fo_actual
+            self._notificar(fo_id, m.telemetria_fo(
+                req_id, fo_id, est.ws_id, d["caudal_lpm"], d["volumen_l"]))
 
         elif tipo == "FINISHED":
-            self.central.aplicar(est, est.fin_riego, req_id, motivo=d["motivo"],
-                                 volumen_total_l=d["volumen_total_l"],
-                                 duracion_s=d["duracion_s"])
+            acciones = self.central.aplicar(
+                est, est.fin_riego, req_id, motivo=d["motivo"],
+                volumen_total_l=d["volumen_total_l"], duracion_s=d["duracion_s"])
+            if e.CERRAR_RIEGO not in acciones:
+                self._finished_no_esperado(est, d)
 
         elif tipo == "START_REJECTED":
             self.central.aplicar(
                 est, est.start_rechazado, req_id,
                 motivo=f"La estación ha rechazado el riego ({d.get('motivo')})")
+
+    # ------------------------------- riegos que CENTRAL no tiene en memoria
+    def _adoptar_si_desconocido(self, est, d) -> bool:
+        """Adopta un riego en marcha que CENTRAL no conoce (ver
+        Estacion.adoptar_riego). Devuelve True si lo ha adoptado.
+
+        Solo se adopta si:
+          - CENTRAL no ha tramitado esa petición en esta ejecución
+            (si la tramitó y ya no es la actual, es que la cortó o caducó: el
+            STARTED tardío debe recibir STOP, como siempre), y
+          - el riego no está ya cerrado en la BD (una telemetría atrasada no
+            debe resucitar un riego terminado).
+        """
+        req_id = d.get("req_id")
+        with self.lock_procesadas:
+            ya_tramitada = req_id in self.procesadas
+        if ya_tramitada or not req_id or self.central.bd.existe_riego(req_id):
+            return False
+        adoptado = est.adoptar_riego(
+            req_id, d.get("fo_id"), d.get("origen"),
+            d.get("caudal_lpm", 0.0), d.get("volumen_l", 0.0), d.get("segundos", 0))
+        if adoptado:
+            self.central.log(f"{est.ws_id}: riego en curso RECUPERADO tras reiniciar "
+                             f"CENTRAL (req {req_id[:8]}, {d.get('fo_id') or d.get('origen')})")
+            self.central.tras_evento(est, [])     # guarda banderas y publica estado
+        return adoptado
+
+    def _finished_no_esperado(self, est, d):
+        """FINISHED de un riego que no es el actual. Dos casos:
+
+        1. Ya está en la BD: CENTRAL lo cerró antes por su cuenta (fuga,
+           desconexión, bloqueo) con la última telemetría. El Engine trae ahora
+           los totales exactos (por ejemplo, al recuperarse de una caída): se
+           corrigen en la BD. El operario ya tuvo su RESUMEN.
+        2. No está en la BD y CENTRAL no lo tramitó en esta ejecución: el
+           riego empezó antes de que CENTRAL se reiniciara y terminó sin que lo
+           adoptáramos. Se guarda y se manda el RESUMEN al operario.
+        """
+        req_id = d["req_id"]
+        anterior = self.central.bd.obtener_riego(req_id)
+        if anterior is not None:
+            nuevo_vol = round(d["volumen_total_l"], 2)
+            if nuevo_vol != anterior["volumen_total_l"]:
+                self.central.bd.corregir_totales(req_id, nuevo_vol, d["duracion_s"])
+                with est.lock:
+                    est.agua_total += nuevo_vol - (anterior["volumen_total_l"] or 0)
+                self.central.log(f"{est.ws_id}: estado final del riego {req_id[:8]} "
+                                 f"recibido del Engine: {nuevo_vol} L en {d['duracion_s']} s")
+            return
+        with self.lock_procesadas:
+            ya_tramitada = req_id in self.procesadas
+        if ya_tramitada:
+            return            # START cortado o caducado: ya se trató en su momento
+        datos = {"req_id": req_id, "ws_id": est.ws_id, "fo_id": d.get("fo_id"),
+                 "origen": d.get("origen") or "DESCONOCIDO", "inicio": None,
+                 "volumen": d["volumen_total_l"], "segundos": d["duracion_s"]}
+        self.central.log(f"{est.ws_id}: riego {req_id[:8]} terminado mientras CENTRAL "
+                         f"no estaba: se guarda y se avisa al operario")
+        self._cerrar_riego(datos, d["motivo"], d["volumen_total_l"], d["duracion_s"])
 
     # ----------------------------------- acciones de la máquina de estados
     def ejecutar(self, est, acciones, datos, motivo,
@@ -249,7 +342,8 @@ class KafkaCentral:
                 self._notificar(fo_id, m.aceptada(req_id, fo_id, ws_id))
             elif accion == e.ENVIAR_START:
                 self._enviar(m.T_COMMANDS, ws_id,
-                             m.start(req_id, ws_id, fo_id, datos["duracion_s"]))
+                             m.start(req_id, ws_id, fo_id, datos["duracion_s"],
+                                     datos.get("origen")))
             elif accion == e.ARRANCAR_TIMER:
                 self._arrancar_timer(est, req_id)
             elif accion == e.CANCELAR_TIMER:
@@ -257,6 +351,8 @@ class KafkaCentral:
             elif accion == e.ENVIAR_DENEGADA:
                 self.central.log(f"{ws_id}: petición DENEGADA ({motivo})")
                 self._notificar(fo_id, m.denegada(req_id, fo_id, ws_id, motivo))
+                self._avisar_ws_denegada(datos.get("origen") if datos else None,
+                                         req_id, ws_id, motivo)
             elif accion == e.ENVIAR_STOP:
                 self._enviar(m.T_COMMANDS, ws_id, m.stop(ws_id, motivo))
             elif accion == e.ENVIAR_BLOCK:
@@ -278,9 +374,13 @@ class KafkaCentral:
         if duracion_s is None:
             duracion_s = datos["segundos"]
         volumen_total_l = round(volumen_total_l, 2)
-        self.central.bd.guardar_riego(
+        nuevo = self.central.bd.guardar_riego(
             datos["req_id"], datos["ws_id"], datos["fo_id"], datos["origen"],
             datos["inicio"], m.ahora(), duracion_s, volumen_total_l, motivo)
+        est = self.central.red.get(datos["ws_id"])
+        if nuevo and est is not None:
+            with est.lock:
+                est.agua_total += volumen_total_l     # agua suministrada (panel)
         self.central.log(f"{datos['ws_id']}: riego terminado ({motivo}), "
                          f"{volumen_total_l} L en {duracion_s} s")
         self._notificar(datos["fo_id"], m.resumen(

@@ -88,9 +88,17 @@ class BD:
             self.conn.commit()
 
     def listar_estaciones(self) -> list[dict]:
+        """Estaciones con sus banderas y, además, agua_total: los litros de
+        todos sus riegos guardados (el panel enseña el agua suministrada).
+
+        LEFT JOIN: una estación sin riegos también sale (con 0 litros).
+        COALESCE(x, 0) devuelve 0 cuando SUM no tiene nada que sumar (NULL).
+        """
         with self.lock:
             filas = self.conn.execute(
-                "SELECT * FROM estaciones ORDER BY ws_id").fetchall()
+                "SELECT e.*, COALESCE(SUM(r.volumen_total_l), 0) AS agua_total "
+                "FROM estaciones e LEFT JOIN riegos r ON r.ws_id = e.ws_id "
+                "GROUP BY e.ws_id ORDER BY e.ws_id").fetchall()
             return [dict(f) for f in filas]
 
     # ------------------------------------------------------------- operarios
@@ -99,6 +107,20 @@ class BD:
             fila = self.conn.execute(
                 "SELECT 1 FROM operarios WHERE fo_id = ?", (fo_id,)).fetchone()
             return fila is not None
+
+    def registrar_operario(self, fo_id: str, nombre: str | None = None) -> bool:
+        """Da de alta un operario. Devuelve True si era nuevo.
+
+        La guía de corrección pide poder lanzar tantos FO como diga el
+        profesor: un FO-03 que nadie dio de alta tiene que poder trabajar.
+        CENTRAL lo da de alta en su primera petición (ver kafka_central).
+        """
+        with self.lock:
+            cur = self.conn.execute(
+                "INSERT OR IGNORE INTO operarios (fo_id, nombre) VALUES (?, ?)",
+                (fo_id, nombre or f"Operario {fo_id}"))
+            self.conn.commit()
+            return cur.rowcount == 1
 
     # ---------------------------------------------------------------- riegos
     def guardar_riego(self, req_id, ws_id, fo_id, origen, inicio, fin,
@@ -123,6 +145,33 @@ class BD:
                     (fin, ws_id))
             self.conn.commit()
             return nuevo
+
+    def existe_riego(self, req_id: str) -> bool:
+        with self.lock:
+            fila = self.conn.execute(
+                "SELECT 1 FROM riegos WHERE req_id = ?", (req_id,)).fetchone()
+            return fila is not None
+
+    def obtener_riego(self, req_id: str) -> dict | None:
+        with self.lock:
+            fila = self.conn.execute(
+                "SELECT * FROM riegos WHERE req_id = ?", (req_id,)).fetchone()
+            return dict(fila) if fila else None
+
+    def corregir_totales(self, req_id: str, volumen_total_l: float,
+                         duracion_s: int) -> None:
+        """Pone en un riego ya guardado los totales que da el Engine.
+
+        Caso: CENTRAL cierra un riego por su cuenta (fuga, desconexión) con la
+        última telemetría que recibió. Después el Engine manda su FINISHED con
+        el volumen exacto (por ejemplo, al recuperarse tras caerse). Así no se
+        pierde lo que se regó en el último segundo.
+        """
+        with self.lock:
+            self.conn.execute(
+                "UPDATE riegos SET volumen_total_l = ?, duracion_s = ? WHERE req_id = ?",
+                (volumen_total_l, duracion_s, req_id))
+            self.conn.commit()
 
     def listar_riegos(self, ws_id: str | None = None) -> list[dict]:
         with self.lock:

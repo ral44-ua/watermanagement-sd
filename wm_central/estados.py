@@ -60,7 +60,7 @@ def _ahora_iso() -> str:
 
 class Estacion:
     def __init__(self, ws_id, ubicacion, conectada=False, fuga=False,
-                 bloqueada=False, regando=False):
+                 bloqueada=False, regando=False, agua_total=0.0):
         self.ws_id = ws_id
         self.ubicacion = ubicacion
         # --- banderas persistentes (también en la BD) ---
@@ -79,6 +79,10 @@ class Estacion:
         self.volumen = 0.0           # L acumulados (última telemetría)
         self.segundos = 0            # segundos regando (última telemetría)
         self.ultimo_alive = 0.0      # time.monotonic() del último ALIVE
+        # Litros de todos los riegos terminados (se carga de la BD al arrancar
+        # y CENTRAL lo suma al cerrar cada riego). Es la "cantidad de agua
+        # suministrada" que pide la guía en el panel.
+        self.agua_total = float(agua_total or 0)
         self.lock = threading.RLock()
 
     # ------------------------------------------------------------ consultas
@@ -169,11 +173,16 @@ class Estacion:
         Si estaba bloqueada en BD, la bandera sigue puesta y se verá
         FUERA_SERVICIO. La fuga se pone a 0: es una sesión nueva del Monitor
         y, si el Engine sigue mal, el Monitor volverá a mandar LEAK.
+
+        Si hay un riego ADOPTADO (ver adoptar_riego) se conserva: el Engine
+        sigue regando y su FINISHED lo cerrará. Cualquier otro riego ya lo
+        habría cortado desconectar(), así que no queda nada que limpiar.
         """
         with self.lock:
             self.conectada = True
             self.fuga = False
-            self._limpiar_riego()
+            if not self.regando:
+                self._limpiar_riego()
             self.ultimo_alive = time.monotonic()
             return []
 
@@ -262,6 +271,33 @@ class Estacion:
             self._limpiar_riego()
             return [CERRAR_RIEGO]
 
+    def adoptar_riego(self, req_id, fo_id, origen, caudal=0.0, volumen=0.0,
+                      segundos=0) -> bool:
+        """Riego en marcha que CENTRAL no conocía -> REGANDO.
+
+        Pasa cuando CENTRAL se cae y se reinicia mientras una WS riega: el
+        Engine sigue (la guía lo exige) y manda TELEMETRIA de un req_id que la
+        CENTRAL nueva no tiene en memoria. En vez de ignorarla, CENTRAL
+        "adopta" el riego: lo pinta como REGANDO y, al llegar el FINISHED, lo
+        guarda y manda el RESUMEN al operario. Así no se pierde el riego.
+
+        Solo si la estación no tiene ya otro riego o reserva. Devuelve True si
+        lo ha adoptado. Quien llama comprueba antes que el riego no esté ya
+        cerrado en BD (si no, una telemetría atrasada lo resucitaría).
+        """
+        with self.lock:
+            if self.regando or self.reservada:
+                return False
+            self.regando = True
+            self.req_actual = req_id
+            self.fo_actual = fo_id
+            self.origen = origen or "DESCONOCIDO"
+            self.inicio = None             # no sabemos cuándo empezó
+            self.caudal = caudal
+            self.volumen = volumen
+            self.segundos = segundos
+            return True
+
     def timeout_reserva(self, req_id) -> list:
         """Pasan 5 s sin STARTED: RESERVADA -> DISPONIBLE y DENEGADA al FO."""
         with self.lock:
@@ -309,7 +345,7 @@ class Red:
         for f in filas_bd:
             self.estaciones[f["ws_id"]] = Estacion(
                 f["ws_id"], f["ubicacion"], f["conectada"], f["fuga"],
-                f["bloqueada"], f["regando"])
+                f["bloqueada"], f["regando"], f.get("agua_total", 0.0))
 
     def get(self, ws_id) -> Estacion | None:
         with self.lock:

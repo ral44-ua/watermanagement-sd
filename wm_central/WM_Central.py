@@ -95,6 +95,9 @@ class Central:
                     "caudal": round(est.caudal, 1) if regando else None,
                     "volumen": round(est.volumen, 2) if regando else None,
                     "operario": (est.fo_actual or est.origen) if regando else None,
+                    # Agua suministrada por la WS desde siempre: la de los
+                    # riegos terminados (BD) más la del riego en curso.
+                    "agua_total": round(est.agua_total + (est.volumen if regando else 0), 2),
                 })
         resumen = {}
         for e in estaciones:
@@ -161,6 +164,7 @@ FONDO = {
 # "Verde parpadeando": cada segundo se alterna entre verde claro y verde.
 REGANDO_A, REGANDO_B = "\033[30;102m", "\033[97;42m"
 RESET = "\033[0m"
+ANCHO = 95                       # ancho de cada fila del panel de consola
 BORRAR_LINEA = "\033[K"          # borra desde el cursor hasta el final de la línea
 
 
@@ -176,18 +180,19 @@ def texto_panel(foto: dict, cabecera: str, parpadeo: bool) -> str:
     """Construye el panel entero como un único texto."""
     lineas = [f"=== WM_Central · {cabecera} · {foto['hora']} ===", "",
               f"{'ID':<8}{'UBICACIÓN':<22}{'ESTADO':<20}{'CAUDAL':>11}"
-              f"{'VOLUMEN':>11}  OPERARIO",
-              "-" * 82]
+              f"{'VOLUMEN':>11}{'AGUA TOTAL':>13}  OPERARIO",
+              "-" * ANCHO]
     for e in foto["estaciones"]:
+        total = f"{e['agua_total']:>11.2f} L"
         if e["estado"] == "REGANDO":
             color = REGANDO_A if parpadeo else REGANDO_B
-            datos = (f"{e['caudal']:>7.1f} L/m{e['volumen']:>9.2f} L"
+            datos = (f"{e['caudal']:>7.1f} L/m{e['volumen']:>9.2f} L{total}"
                      f"  {e['operario']}")
         else:
             color = FONDO[e["estado"]]
-            datos = f"{'-':>11}{'-':>11}  -"
+            datos = f"{'-':>11}{'-':>11}{total}  -"
         fila = f"{e['ws_id']:<8}{e['ubicacion'][:21]:<22}{e['etiqueta']:<20}{datos}"
-        lineas.append(f"{color}{fila:<82}{RESET}")
+        lineas.append(f"{color}{fila:<{ANCHO}}{RESET}")
     if not foto["estaciones"]:
         lineas.append("(no hay estaciones: arranca un WM_WS_M)")
     lineas += ["", " · ".join(f"{ETIQUETAS[k]}: {v}"

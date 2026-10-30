@@ -166,8 +166,12 @@ python -m WM_FO.WM_FO shuttle.proxy.rlwy.net:15140 FO-12
 python -m WM_FO.WM_FO shuttle.proxy.rlwy.net:15140 FO-07 --fichero WM_FO/peticiones.txt
 ```
 
-(Con Docker, los mismos argumentos en `docker run`: ver los Dockerfiles de
-`wm_ws/` y `WM_FO/`.)
+La primera vez que arranca una WS, CENTRAL contesta `WS no registrada` y el
+Monitor se da de alta solo (`REGISTER`) antes de autenticarse.
+
+Con Docker (obligatorio en la corrección), los mismos argumentos en
+`docker run`: ver el apartado 2 del `README.md` y los Dockerfiles de
+`wm_ws/WS_M/`, `wm_ws/WS_E/` y `WM_FO/`.
 
 ---
 

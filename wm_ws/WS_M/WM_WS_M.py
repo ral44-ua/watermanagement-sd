@@ -2,11 +2,14 @@
 WM_WS_M · Monitor de una Watering Station (WS).
 
 Uso (siempre desde la raíz del repositorio, para que funcione 'from common ...'):
-    python -m wm_ws.WS_M.WM_WS_M <puerto_engine> <ip_central:puerto> <ws_id> [--ubicacion "..."]
+    python -m wm_ws.WS_M.WM_WS_M <puerto_engine> <ip_central:puerto> <ws_id> [--ubicacion "..."] [--sin-registro]
     python -m wm_ws.WS_M.WM_WS_M 9100 localhost:9000 WS-04 --ubicacion "River Park"
 
 Qué hace:
   1. Se conecta a CENTRAL y se autentica:  ENQ -> ACK,  AUTH#WS-04#River Park -> OK#AUTH.
+     Si CENTRAL contesta KO#AUTH#WS no registrada, se da de alta primero
+     (REGISTER#WS-04#River Park -> OK#REGISTER) y repite el AUTH.
+     Con --sin-registro no se da de alta: sirve para enseñar la denegación.
   2. Envía ALIVE#WS-04 a CENTRAL cada 2 s, para que CENTRAL sepa que la WS sigue viva
      (CENTRAL la marca DESCONECTADA si pasan 5 s sin ALIVE).
   3. Abre un servidor de sockets y espera a su Engine:  ENQ -> ACK,  HELLO -> ID#WS-04.
@@ -61,10 +64,12 @@ def ubicacion_valida(texto: str) -> str:
 # ---------------------------------------------------------------------------
 
 class Monitor:
-    def __init__(self, ws_id: str, ubicacion: str, dir_central: tuple[str, int]):
+    def __init__(self, ws_id: str, ubicacion: str, dir_central: tuple[str, int],
+                 registrar: bool = True):
         self.ws_id = ws_id
         self.ubicacion = ubicacion
         self.dir_central = dir_central
+        self.registrar = registrar        # False con --sin-registro
 
         self.lock_central = threading.Lock()
         self.sock_central = None          # None = sin conexión con CENTRAL
@@ -95,6 +100,16 @@ class Monitor:
                     raise ConnectionError("CENTRAL no respondió ACK al ENQ")
 
                 campos = peticion(sock, f"AUTH#{self.ws_id}#{self.ubicacion}")
+                if self._no_registrada(campos) and self.registrar:
+                    # Primera vez de esta WS: alta en CENTRAL y otra vez AUTH.
+                    log(f"[AVISO] CENTRAL: {self.ws_id} no está registrada. Dándola de alta...")
+                    alta = peticion(sock, f"REGISTER#{self.ws_id}#{self.ubicacion}")
+                    if alta[0] == "OK":
+                        log(f"[OK] {self.ws_id} registrada en CENTRAL ({self.ubicacion})")
+                    else:
+                        log(f"[ERROR] CENTRAL rechaza el registro: "
+                            f"{alta[2] if len(alta) > 2 else 'sin motivo'}")
+                    campos = peticion(sock, f"AUTH#{self.ws_id}#{self.ubicacion}")
                 if campos[0] == "OK":
                     break                                     # autenticado
 
@@ -121,6 +136,10 @@ class Monitor:
             # una fuga, hay que recordárselo o la vería en verde.
             if self.fuga:
                 self._peticion_central(f"LEAK#{self.ws_id}#{self.motivo_fuga}")
+
+    @staticmethod
+    def _no_registrada(campos: list) -> bool:
+        return campos[:2] == ["KO", "AUTH"] and len(campos) > 2 and "no registrada" in campos[2]
 
     def _peticion_central(self, texto: str) -> bool:
         """Envía 'texto' a CENTRAL y comprueba que responde OK.
@@ -251,9 +270,12 @@ def main() -> None:
     parser.add_argument("ws_id", type=id_ws, help="ID de la estación, por ejemplo WS-04")
     parser.add_argument("--ubicacion", type=ubicacion_valida, default="Sin ubicación",
                         help='parque o zona, por ejemplo "River Park"')
+    parser.add_argument("--sin-registro", action="store_true",
+                        help="no darse de alta si CENTRAL no la conoce (para probar la denegación)")
     args = parser.parse_args()
 
-    monitor = Monitor(args.ws_id, args.ubicacion, args.central)
+    monitor = Monitor(args.ws_id, args.ubicacion, args.central,
+                      registrar=not args.sin_registro)
     log(f"=== WM_WS_M · {args.ws_id} · {args.ubicacion} ===")
     try:
         monitor.conectar_central(primera_vez=True)
