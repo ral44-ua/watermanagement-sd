@@ -71,7 +71,7 @@
   <div class="tabla">
     <table>
       <thead><tr><th>ID</th><th>Ubicación</th><th>Estado</th><th class="num">Caudal (L/min)</th>
-                 <th class="num">Volumen (L)</th><th>Operario</th></tr></thead>
+                 <th class="num">Volumen (L)</th><th class="num">Agua total (L)</th><th>Operario</th></tr></thead>
       <tbody id="filas"></tbody>
     </table>
   </div>
@@ -125,12 +125,13 @@ function pintar(foto) {
     celda(fila, e.etiqueta);
     celda(fila, e.caudal === null ? "-" : e.caudal.toFixed(1), "num");
     celda(fila, e.volumen === null ? "-" : e.volumen.toFixed(2), "num");
+    celda(fila, e.agua_total.toFixed(2), "num");     // agua suministrada desde siempre
     celda(fila, e.operario || "-");
     cuerpo.appendChild(fila);
   }
   if (foto.estaciones.length === 0) {
     const fila = document.createElement("tr");
-    celda(fila, "No hay estaciones registradas: arranca un WM_WS_M.").colSpan = 6;
+    celda(fila, "No hay estaciones registradas: arranca un WM_WS_M.").colSpan = 7;
     cuerpo.appendChild(fila);
   }
   $("eventos").textContent = foto.eventos.join("\n");

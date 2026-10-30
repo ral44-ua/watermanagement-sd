@@ -4,7 +4,10 @@ Servidor de sockets de CENTRAL para los Monitores (WM_WS_M).
 Protocolo (contrato, apartado 3, conexión A):
   - Al conectar: el Monitor envía ENQ y CENTRAL responde ACK.
   - Después, tramas <STX>DATA<ETX><LRC> con campos separados por '#':
+        REGISTER#WS-04#River Park -> OK#REGISTER o KO#REGISTER#motivo
+                                     (alta de una WS nueva en la BD)
         AUTH#WS-04#River Park  -> OK#AUTH  o  KO#AUTH#motivo
+                                  (KO#AUTH#WS no registrada si no se dio de alta)
         ALIVE#WS-04            -> OK#ALIVE           (cada 2 s)
         LEAK#WS-04#Engine KO   -> OK#LEAK
         RECOVERED#WS-04        -> OK#RECOVERED
@@ -18,6 +21,7 @@ Hilos:
   - un watchdog que cada segundo busca estaciones sin ALIVE.
 """
 
+import re
 import socket
 import threading
 import time
@@ -111,6 +115,8 @@ class ServidorSockets:
 
         if codigo == "AUTH":
             return self._auth(campos, ws_id, conn)
+        if codigo == "REGISTER":
+            return self._registrar(campos), ws_id
 
         if codigo not in ("ALIVE", "LEAK", "RECOVERED"):
             return f"KO#{codigo}#Código desconocido", ws_id
@@ -138,11 +144,15 @@ class ServidorSockets:
         if len(campos) < 3 or not campos[1] or not campos[2]:
             return "KO#AUTH#Formato: AUTH#<ws_id>#<ubicacion>", None
         nuevo_id = campos[1]
-        ubicacion = "#".join(campos[2:])      # por si la ubicación lleva '#'
 
-        if self.central.bd.registrar_ws(nuevo_id, ubicacion):
-            self.central.log(f"{nuevo_id}: estación NUEVA registrada ({ubicacion})")
-        est = self.central.red.agregar(nuevo_id, ubicacion)
+        # Solo se autentica una WS dada de alta antes (REGISTER). Es el caso
+        # de denegación que pone de ejemplo la guía de corrección.
+        if not self.central.bd.existe_ws(nuevo_id):
+            self.central.log(f"{nuevo_id}: autenticación DENEGADA (WS no registrada)")
+            return "KO#AUTH#WS no registrada", None
+        est = self.central.red.get(nuevo_id)
+        if est is None:          # en BD pero no en memoria (no debería pasar)
+            est = self.central.red.agregar(nuevo_id, "#".join(campos[2:]))
 
         # Comprobar y marcar como conectada dentro del lock de la estación:
         # si dos Monitores con el mismo ID llegan a la vez, solo entra uno.
@@ -156,6 +166,31 @@ class ServidorSockets:
         self.central.tras_evento(est, acciones)
         self.central.log(f"{nuevo_id}: autenticada ({est.estado_visible()})")
         return "OK#AUTH", nuevo_id
+
+    def _registrar(self, campos):
+        """REGISTER#<ws_id>#<ubicacion>: alta de una estación nueva.
+
+        Registrarse y autenticarse son dos cosas distintas (enunciado:
+        "registrarse en CENTRAL" y "recibir peticiones de registro y alta"):
+          - REGISTER guarda la estación en la BD, una sola vez en su vida.
+          - AUTH abre la sesión de una estación ya registrada, cada vez que su
+            Monitor arranca o se reconecta.
+        """
+        if len(campos) < 3 or not campos[1] or not campos[2]:
+            return "KO#REGISTER#Formato: REGISTER#<ws_id>#<ubicacion>"
+        ws_id, ubicacion = campos[1], "#".join(campos[2:])
+        if not re.fullmatch(r"WS-\d+", ws_id):
+            return "KO#REGISTER#ID no válido (formato WS-<número>)"
+        if not self.central.bd.registrar_ws(ws_id, ubicacion):
+            return "KO#REGISTER#WS ya registrada"
+        self.central.red.agregar(ws_id, ubicacion)
+        self.central.log(f"{ws_id}: estación NUEVA registrada ({ubicacion})")
+        if self.central.kafka is not None:
+            try:
+                self.central.kafka.publicar_estado()     # los FO la ven ya
+            except Exception as ex:
+                self.central.log(f"ERROR Kafka: {ex}")
+        return "OK#REGISTER"
 
     # ------------------------------------------------------------ watchdog
     def _watchdog(self):

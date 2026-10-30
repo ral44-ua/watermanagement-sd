@@ -66,9 +66,17 @@ def solicitud_riego(req_id, origen, fo_id, ws_id, duracion_s) -> dict:
 # wm.ws.commands  (CENTRAL -> Engine)
 # Para órdenes a todas las WS se envía un mensaje por estación.
 # ---------------------------------------------------------------------------
-def start(req_id, ws_id, fo_id, duracion_s) -> dict:
+def start(req_id, ws_id, fo_id, duracion_s, origen=None) -> dict:
+    """Orden de abrir la válvula.
+
+    origen ("FO", "WS" o "CENTRAL") y fo_id se añadieron para la resiliencia:
+    el Engine los repite en su TELEMETRIA y su FINISHED. Así, si CENTRAL se
+    cae y se reinicia en mitad de un riego, sabe de quién era ese riego y a
+    qué operario mandarle el RESUMEN, aunque ya no lo tenga en memoria.
+    """
     m = _base("START")
-    m.update(req_id=req_id, ws_id=ws_id, fo_id=fo_id, duracion_s=duracion_s)
+    m.update(req_id=req_id, ws_id=ws_id, fo_id=fo_id, duracion_s=duracion_s,
+             origen=origen)
     return m
 
 
@@ -100,19 +108,30 @@ def started(req_id, ws_id) -> dict:
     return m
 
 
-def telemetria(req_id, ws_id, caudal_lpm, volumen_l, segundos) -> dict:
-    """Se envía cada segundo mientras se riega."""
+def telemetria(req_id, ws_id, caudal_lpm, volumen_l, segundos,
+               fo_id=None, origen=None) -> dict:
+    """Se envía cada segundo mientras se riega.
+
+    fo_id y origen: los del START (ver start()). Son opcionales para que los
+    mensajes antiguos y los tests sigan valiendo.
+    """
     m = _base("TELEMETRIA")
     m.update(req_id=req_id, ws_id=ws_id, caudal_lpm=caudal_lpm,
-             volumen_l=volumen_l, segundos=segundos)
+             volumen_l=volumen_l, segundos=segundos, fo_id=fo_id, origen=origen)
     return m
 
 
-def finished(req_id, ws_id, motivo, volumen_total_l, duracion_s) -> dict:
-    """Fin del riego. motivo: TIEMPO, MANUAL, FUGA o BLOQUEO."""
+def finished(req_id, ws_id, motivo, volumen_total_l, duracion_s,
+             fo_id=None, origen=None) -> dict:
+    """Fin del riego. motivo: TIEMPO, MANUAL, FUGA, BLOQUEO o DESCONEXION.
+
+    fo_id y origen: los del START. CENTRAL los usa si el riego ya no está en
+    su memoria (se reinició mientras se regaba) para guardarlo y avisar al FO.
+    """
     m = _base("FINISHED")
     m.update(req_id=req_id, ws_id=ws_id, motivo=motivo,
-             volumen_total_l=volumen_total_l, duracion_s=duracion_s)
+             volumen_total_l=volumen_total_l, duracion_s=duracion_s,
+             fo_id=fo_id, origen=origen)
     return m
 
 
