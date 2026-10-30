@@ -66,15 +66,23 @@ class PanelWeb:
                     self._json(404, {"ok": False, "mensaje": "No existe"})
 
             def do_POST(self):
+                largo = int(self.headers.get("Content-Length") or 0)
+                if largo > MAX_CUERPO:
+                    # No leemos 10 KB+ de nadie; cerramos la conexión.
+                    self.close_connection = True
+                    return self._json(413, {"ok": False, "mensaje": "Demasiado grande"})
+                # El cuerpo se lee SIEMPRE, antes de mirar la clave o la ruta.
+                # Si respondiéramos 401/404 sin leerlo, al cerrar la conexión
+                # quedarían bytes sin leer en el socket y Windows la corta de
+                # golpe (RST): el navegador vería "conexión anulada" en vez de
+                # la respuesta. Linux no lo hace, por eso solo fallaba en Windows.
+                cuerpo = self.rfile.read(largo)
                 if not panel._autorizado(self):
                     return
                 if self.path != "/api/orden":
                     return self._json(404, {"ok": False, "mensaje": "No existe"})
-                largo = int(self.headers.get("Content-Length") or 0)
-                if largo > MAX_CUERPO:
-                    return self._json(413, {"ok": False, "mensaje": "Demasiado grande"})
                 try:
-                    orden = json.loads(self.rfile.read(largo) or b"{}")
+                    orden = json.loads(cuerpo or b"{}")
                     codigo, mensaje = panel.ejecutar_orden(orden)
                 except ValueError as ex:          # JSON roto o datos inválidos
                     codigo, mensaje = 400, str(ex)

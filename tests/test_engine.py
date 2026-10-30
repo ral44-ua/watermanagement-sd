@@ -106,6 +106,16 @@ def test_monitor_real_que_se_cae_deja_la_ws_averiada(engine):
             recibir_trama(conn)                    # OK#HEALTH
             if len(conexiones) == 1:
                 conn.close()                       # ¡Ctrl+C en el Monitor!
+        # Después sigue contestando como un Monitor sano hasta que acaben los
+        # tests. Si no, el Engine perdería el Monitor otra vez y se pondría a
+        # reintentar, ensuciando la salida de pytest con avisos.
+        try:
+            while True:
+                time.sleep(1)
+                enviar_trama(conn, "HEALTH")
+                recibir_trama(conn)
+        except OSError:
+            pass
 
     # Se apunta cada cambio en vez de mirar engine.monitor_ok cada 50 ms: la
     # reconexión puede ser tan rápida (en Windows lo es) que el estado AVERIADA
