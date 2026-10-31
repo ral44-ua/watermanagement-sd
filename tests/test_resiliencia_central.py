@@ -150,6 +150,24 @@ def test_riego_que_termina_con_central_caida_no_se_pierde(ruta):
     assert estado(central) == "DISPONIBLE"
 
 
+def test_central_vuelve_y_lo_primero_que_relee_es_el_started(ruta):
+    """CENTRAL se cae de golpe antes de guardar su offset (lo hace cada 5 s):
+    al volver relee el STARTED del riego. Tiene que adoptarlo CON su operario
+    para que, al terminar, el FO reciba el RESUMEN (fallaba: el STARTED no
+    llevaba fo_id y el riego quedaba sin operario)."""
+    central, prod = arrancar_central(ruta)
+    pedir(central, "r1")
+    central, prod = arrancar_central(ruta)                       # caída
+    tel(central, m.started("r1", "WS-04", "FO-12", "FO"))         # relee el STARTED
+    assert estado(central) == "REGANDO"
+    tel(central, m.telemetria("r1", "WS-04", 10.0, 1.2, 7, "FO-12", "FO"))
+    assert prod.ultimo(NOTIF, "TELEMETRIA")["fo_id"] == "FO-12"
+    tel(central, m.finished("r1", "WS-04", "TIEMPO", 5.0, 30, "FO-12", "FO"))
+    assert prod.ultimo(NOTIF, "RESUMEN")["fo_id"] == "FO-12"
+    [riego] = central.bd.listar_riegos("WS-04")
+    assert riego["fo_id"] == "FO-12" and riego["origen"] == "FO"
+
+
 def test_riego_adoptado_sigue_tras_autenticarse_el_monitor(ruta):
     central, prod = arrancar_central(ruta)
     pedir(central, "r1")

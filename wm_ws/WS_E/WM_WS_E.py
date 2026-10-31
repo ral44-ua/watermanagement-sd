@@ -231,7 +231,8 @@ class Engine:
     def hilo_riego(self, riego: Riego) -> None:
         """Simula el riego: válvula abierta, caudalímetro y telemetría cada segundo."""
         self.guardar_riego(riego, 0.0, 0)  # en disco desde el primer momento
-        self.publicar(m.T_TELEMETRY, m.started(riego.req_id, self.ws_id))
+        self.publicar(m.T_TELEMETRY, m.started(riego.req_id, self.ws_id,
+                                               riego.fo_id, riego.origen))
         log(f"[RIEGO] Válvula ABIERTA durante {riego.duracion_s} s (petición {riego.req_id})")
 
         volumen = 0.0

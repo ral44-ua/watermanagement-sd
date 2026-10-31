@@ -25,7 +25,7 @@ CASOS = [
     (m.stop, ("WS-04", "FUGA"), "STOP", {"ws_id", "motivo"}),
     (m.block, ("WS-04",), "BLOCK", {"ws_id"}),
     (m.activate, ("WS-04",), "ACTIVATE", {"ws_id"}),
-    (m.started, ("r1", "WS-04"), "STARTED", {"req_id", "ws_id"}),
+    (m.started, ("r1", "WS-04"), "STARTED", {"req_id", "ws_id", "fo_id", "origen"}),
     (m.telemetria, ("r1", "WS-04", 11.4, 186.2, 17), "TELEMETRIA",
      {"req_id", "ws_id", "caudal_lpm", "volumen_l", "segundos", "fo_id", "origen"}),
     (m.finished, ("r1", "WS-04", "TIEMPO", 342.0, 30), "FINISHED",
