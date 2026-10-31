@@ -43,3 +43,12 @@ Contexto que se le dio a la IA: la guía de corrección (PDF), el enunciado, el 
 2. «haz lo que se tiene que arreglar y hazme los tests para comprobar y dime que tengo que cambiar y comprobar»
 
 Qué se hizo: Dockerfiles de WM_WS_M, WM_WS_E y WM_FO; README; registro de WS separado del AUTH (REGISTER); alta automática de operarios nuevos; agua total en el panel; aviso a la WS cuando se deniega su riego manual; Engine AVERIADA sin Monitor; riego del Engine guardado en disco y recuperado tras una caída; el FO recibe los avisos atrasados tras reiniciarse; FO y Engine avisan "Imposible conectar con WM_Central"; CENTRAL recupera los riegos en curso tras reiniciarse. Tests nuevos en tests/ (pytest) y prueba con los procesos reales de CENTRAL, Monitor y Engine. Revisado y probado por nosotros antes de fusionar.
+
+## 2026-10-30 / 2026-10-31 · Claude · Railway y guía de corrección (resiliencia)
+
+- «estoy en la sesion de clase, que falta»
+- «Accede al repositorio y dime que falta por hacer hasta ponernos ya con la memoria» / «explicame paso a paso como hacer lo primero» (Railway) / «explicame como prepararme para railway» / «explicame como hacer mi parte para llegar hasta este punto»
+- Apartado de **resiliencia** de la guía de corrección: «compruebalo y dime que has hecho o dime en el caso de que tenga que hacer yo algo»
+
+Qué se hizo: se tiraron de verdad los programas (Ctrl+C y kill -9) durante riegos con CENTRAL, 2 WS y 2 FO sobre un Kafka simulado. Se encontraron y arreglaron dos fallos: (1) un FO relanzado tras un cierre brusco decía "Kafka no responde" y el Engine tardaba 45 s en volver a recibir órdenes (session.timeout.ms a 10 s para todos los consumidores); (2) si CENTRAL caía antes de guardar su offset, al volver adoptaba el riego sin operario y el FO no recibía su RESUMEN (STARTED lleva ahora fo_id y origen). Test nuevo y 157 tests en Python 3.9 y 3.13.
+

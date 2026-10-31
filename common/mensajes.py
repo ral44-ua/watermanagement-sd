@@ -101,10 +101,18 @@ def activate(ws_id) -> dict:
 # ---------------------------------------------------------------------------
 # wm.ws.telemetry  (Engine -> CENTRAL)
 # ---------------------------------------------------------------------------
-def started(req_id, ws_id) -> dict:
-    """El Engine ha abierto la válvula."""
+def started(req_id, ws_id, fo_id=None, origen=None) -> dict:
+    """El Engine ha abierto la válvula.
+
+    fo_id y origen: los del START, igual que en TELEMETRIA y FINISHED. Hacen
+    falta también aquí: si CENTRAL se cae de golpe, al volver relee los
+    mensajes desde el último offset que guardó (cada 5 s), y puede que el
+    primero que encuentre de ese riego sea este STARTED. Sin fo_id, CENTRAL
+    adoptaría el riego sin saber de qué operario es, y al terminar no le
+    mandaría el RESUMEN.
+    """
     m = _base("STARTED")
-    m.update(req_id=req_id, ws_id=ws_id)
+    m.update(req_id=req_id, ws_id=ws_id, fo_id=fo_id, origen=origen)
     return m
 
 

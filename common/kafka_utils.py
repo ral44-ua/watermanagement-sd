@@ -73,8 +73,16 @@ def crear_consumer(broker: str, group_id: str, topics: list,
       - "earliest": desde el principio del log.
     El commit de offsets es automático (opción por defecto de Kafka).
 
-    extra: más opciones de configuración, por ejemplo
-    {"session.timeout.ms": 10000} (lo usa CENTRAL).
+    session.timeout.ms = 10 s (por defecto Kafka usa 45 s): es lo que tarda
+    Kafka en dar por muerto a un consumidor que deja de dar señales. Si un
+    programa se cierra de golpe (cerrar la ventana, docker kill) no se despide
+    del grupo, y al relanzarlo con el mismo ID su consumidor nuevo no recibe
+    particiones hasta que Kafka echa al viejo. Con 45 s, el FO relanzado se
+    rendía antes ("Kafka no responde", espera 30 s) y el Engine relanzado
+    tardaba 45 s en volver a recibir órdenes. Con 10 s vuelven enseguida.
+    (Mientras siga vivo, el consumidor manda un latido cada 3 s.)
+
+    extra: más opciones de configuración, que sustituyen a las de aquí.
 
     Un Consumer NO se puede compartir entre hilos: uno por hilo.
     """
@@ -82,6 +90,7 @@ def crear_consumer(broker: str, group_id: str, topics: list,
         "bootstrap.servers": broker,
         "group.id": group_id,
         "auto.offset.reset": offset,
+        "session.timeout.ms": 10000,
     }
     config.update(extra or {})
     consumer = Consumer(config)

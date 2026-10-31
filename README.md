@@ -108,8 +108,20 @@ Estados de una WS: Disponible (verde), Regando (verde parpadeante), Fuga
 |---|---|
 | **Monitor** | CENTRAL marca la WS como Desconectada (socket cerrado o 5 s sin ALIVE) y corta el riego. El Engine muestra **AVERIADA**, corta su riego y rechaza riegos (también los manuales) hasta que el Monitor vuelve. |
 | **Engine** | El Monitor avisa de FUGA y CENTRAL cierra el riego con la última telemetría y avisa al operario. El Engine guarda el riego en curso en disco (`riego_WS-04.json`, en el volumen `/datos`); al volver a lanzarlo, **envía el estado final** y CENTRAL corrige los totales. |
-| **FO** | El riego sigue. Al relanzar el FO **con el mismo ID**, recibe los avisos que se perdió (el RESUMEN), marcados como `[PENDIENTE]`. |
+| **FO** | El riego sigue. Al relanzar el FO **con el mismo ID**, recibe los avisos que se perdió (el RESUMEN), marcados como `[PENDIENTE]`. Tarda unos 10 s en reengancharse a Kafka si se cerró de golpe (ver abajo). |
 | **CENTRAL** | Las WS terminan su riego. El Monitor muestra que no puede conectar y reintenta cada 3 s. El FO y el Engine muestran **"Imposible conectar con WM_Central"** (no llega el estado de la red en 15 s) y no envían peticiones. Al volver, CENTRAL recupera el riego que siguiera en marcha (lo "adopta" con la telemetría) o lo guarda si terminó mientras estaba caída, y manda el RESUMEN: **no se pierde ningún riego**. |
+
+**Relanzar tras un cierre brusco** (cerrar la ventana, `docker kill`): el
+programa no se despide de Kafka, y Kafka espera `session.timeout.ms` antes de
+dar por muerto a su consumidor viejo; hasta entonces el nuevo no recibe
+mensajes. Todos los consumidores usan **10 s** (Kafka trae 45 s por defecto):
+con 45 s el FO relanzado se rendía ("Kafka no responde") y el Engine tardaba
+45 s en volver a recibir órdenes.
+
+**Con Docker**, cerrar la ventana de `docker run -it` cierra el cliente de
+Docker, pero el contenedor puede seguir funcionando por detrás (compruébese con
+`docker ps`). Para simular una caída de forma segura: Ctrl+C en su ventana o
+`docker kill <nombre>` desde otra.
 
 ## 5. Cambios respecto al contrato entre módulos
 
@@ -122,9 +134,10 @@ los mensajes anteriores):
      `KO#REGISTER#motivo` (ya registrada, ID no válido).
    - El Monitor, al recibir "no registrada", se registra y repite el `AUTH`.
      Con `--sin-registro` no lo hace (para enseñar la denegación).
-2. **`START`, `TELEMETRIA` y `FINISHED` llevan `fo_id` y `origen`**. El Engine
-   los copia del `START`. Sirven para que una CENTRAL reiniciada sepa de quién
-   es un riego que ya no tiene en memoria.
+2. **`START`, `STARTED`, `TELEMETRIA` y `FINISHED` llevan `fo_id` y `origen`**.
+   El Engine los copia del `START`. Sirven para que una CENTRAL reiniciada sepa
+   de quién es un riego que ya no tiene en memoria (también si lo primero que
+   relee de ese riego es el `STARTED`).
 3. **`DENEGADA` en `wm.ws.commands`** (clave `ws_id`): cuando CENTRAL deniega
    un riego pedido desde la propia WS (`origen: "WS"`), se lo dice a su Engine.
 4. **El Engine también lee `wm.ws.status`**, solo para saber si CENTRAL
