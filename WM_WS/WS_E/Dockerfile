@@ -1,7 +1,7 @@
 # Imagen de WM_WS_E (Engine de una Watering Station).
 #
 # Se construye desde la RAÍZ del repo, porque necesita también common/:
-#     docker build -f wm_ws/WS_E/Dockerfile -t wm-ws-e .
+#     docker build -f WM_WS/WS_E/Dockerfile -t wm-ws-e .
 #
 # Ejecutar (después de su Monitor, en la misma red de Docker):
 #     docker run -it --rm --name ws04-e --network wm -v wm-ws04:/datos \
@@ -25,11 +25,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY common/ common/
-COPY wm_ws/__init__.py wm_ws/__init__.py
-COPY wm_ws/WS_E/ wm_ws/WS_E/
+COPY WM_WS/__init__.py WM_WS/__init__.py
+COPY WM_WS/WS_E/ WM_WS/WS_E/
 
 # Carpeta del fichero riego_<WS>.json (WM_ESTADO_DIR). Se crea por si se
 # arranca sin volumen; con -v, Docker monta el volumen encima.
 RUN mkdir -p /datos
 
-ENTRYPOINT ["python", "-m", "wm_ws.WS_E.WM_WS_E"]
+ENTRYPOINT ["python", "-m", "WM_WS.WS_E.WM_WS_E"]

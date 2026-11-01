@@ -3,7 +3,7 @@ Utilidades comunes a los programas de las estaciones y del operario
 (WM_WS_M, WM_WS_E, WM_FO) y a tests/fake_central.py.
 
 Estaban dentro de WM_WS_M.py. Se sacaron aquí al separar cada programa en su
-carpeta (wm_ws/WS_M, wm_ws/WS_E, WM_FO): así el Engine y el FO no dependen de la
+carpeta (WM_WS/WS_M, WM_WS/WS_E, WM_FO): así el Engine y el FO no dependen de la
 carpeta del Monitor, y cada Dockerfile solo necesita su carpeta y common/.
 """
 import argparse

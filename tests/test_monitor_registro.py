@@ -12,7 +12,7 @@ Ejecutar desde la raíz:  python -m pytest tests/test_monitor_registro.py
 import pytest
 
 from tests.test_socket_server import crear_central
-from wm_ws.WS_M.WM_WS_M import Monitor
+from WM_WS.WS_M.WM_WS_M import Monitor
 
 
 @pytest.fixture

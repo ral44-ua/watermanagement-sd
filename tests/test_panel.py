@@ -16,11 +16,11 @@ import urllib.request
 import pytest
 
 from common import mensajes as m
-from wm_central.WM_Central import Central, REGANDO_A, FONDO, texto_panel
-from wm_central.db import BD
-from wm_central.estados import Red
-from wm_central.kafka_central import KafkaCentral
-from wm_central.panel_web import PanelWeb
+from WM_Central.WM_Central import Central, REGANDO_A, FONDO, texto_panel
+from WM_Central.db import BD
+from WM_Central.estados import Red
+from WM_Central.kafka_central import KafkaCentral
+from WM_Central.panel_web import PanelWeb
 
 
 class ProducerFalso:

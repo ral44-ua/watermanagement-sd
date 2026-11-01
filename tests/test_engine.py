@@ -22,7 +22,7 @@ import pytest
 from common import mensajes as m
 from common.protocol import ACK, ENQ, enviar_trama, leer_byte, recibir_trama
 from tests.test_kafka_central import ProducerFalso
-from wm_ws.WS_E.WM_WS_E import Engine
+from WM_WS.WS_E.WM_WS_E import Engine
 
 TEL = m.T_TELEMETRY
 
