@@ -1,11 +1,11 @@
 # Imagen de WM_Central (CENTRAL + su BD SQLite + panel web).
 #
 # Se construye desde la RAÍZ del repo, porque necesita también common/:
-#     docker build -f wm_central/Dockerfile -t wm-central .
+#     docker build -f WM_Central/Dockerfile -t wm-central .
 # Probar en local (con Kafka accesible en la dirección de BROKER):
 #     docker run --rm -p 9000:9000 -p 8080:8080 -e BROKER=<ip:puerto> wm-central
 #
-# En Railway: variable RAILWAY_DOCKERFILE_PATH=wm_central/Dockerfile y un
+# En Railway: variable RAILWAY_DOCKERFILE_PATH=WM_Central/Dockerfile y un
 # volumen montado en /data (ahí vive la BD). Ver docs/railway.md.
 
 # Imagen base pequeña con Python 3.12 (slim = sin compiladores ni extras).
@@ -24,7 +24,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY common/ common/
-COPY wm_central/ wm_central/
+COPY WM_Central/ WM_Central/
 
 # Valores por defecto. En Railway (o con "docker run -e") se cambian.
 #   PUERTO_SOCKETS  servidor de sockets para los WM_WS_M
@@ -48,4 +48,4 @@ EXPOSE 9000 8080
 # python quien recibe el SIGTERM de "docker stop" o de Railway y cierra Kafka
 # de forma ordenada (ver WM_Central.main). Sin exec, la señal le llegaría a sh.
 # --sin-panel: en un contenedor no hay pantalla; los eventos salen por los logs.
-CMD exec python -m wm_central.WM_Central "$PUERTO_SOCKETS" "$BROKER" --bd "$BD" --sin-panel
+CMD exec python -m WM_Central.WM_Central "$PUERTO_SOCKETS" "$BROKER" --bd "$BD" --sin-panel

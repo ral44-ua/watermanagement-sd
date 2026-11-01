@@ -2,8 +2,8 @@
 WM_WS_M · Monitor de una Watering Station (WS).
 
 Uso (siempre desde la raíz del repositorio, para que funcione 'from common ...'):
-    python -m wm_ws.WS_M.WM_WS_M <puerto_engine> <ip_central:puerto> <ws_id> [--ubicacion "..."] [--sin-registro]
-    python -m wm_ws.WS_M.WM_WS_M 9100 localhost:9000 WS-04 --ubicacion "River Park"
+    python -m WM_WS.WS_M.WM_WS_M <puerto_engine> <ip_central:puerto> <ws_id> [--ubicacion "..."] [--sin-registro]
+    python -m WM_WS.WS_M.WM_WS_M 9100 localhost:9000 WS-04 --ubicacion "River Park"
 
 Qué hace:
   1. Se conecta a CENTRAL y se autentica:  ENQ -> ACK,  AUTH#WS-04#River Park -> OK#AUTH.

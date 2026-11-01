@@ -6,7 +6,7 @@ mensajes de Kafka se pasan a mano a procesar_solicitud()/procesar_telemetria().
 
 Para simular que CENTRAL "se cae y se reinicia" se crea una Central nueva
 sobre el MISMO fichero de BD: es exactamente lo que pasa al volver a lanzar
-python -m wm_central.WM_Central (la memoria se pierde, la BD se queda).
+python -m WM_Central.WM_Central (la memoria se pierde, la BD se queda).
 
 Ejecutar desde la raíz:  python -m pytest tests/test_resiliencia_central.py
 """
@@ -17,10 +17,10 @@ import pytest
 
 from common import mensajes as m
 from tests.test_kafka_central import ProducerFalso
-from wm_central.WM_Central import Central, texto_panel
-from wm_central.db import BD
-from wm_central.estados import Red
-from wm_central.kafka_central import KafkaCentral
+from WM_Central.WM_Central import Central, texto_panel
+from WM_Central.db import BD
+from WM_Central.estados import Red
+from WM_Central.kafka_central import KafkaCentral
 
 NOTIF = m.T_NOTIFICATIONS
 CMD = m.T_COMMANDS

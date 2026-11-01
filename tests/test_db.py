@@ -1,5 +1,5 @@
 """
-Tests de wm_central/db.py. Cada test usa un fichero .db temporal (tmp_path lo
+Tests de WM_Central/db.py. Cada test usa un fichero .db temporal (tmp_path lo
 crea pytest y lo borra al acabar), así no se toca la BD real.
 
 Ejecutar desde la raíz:  python -m pytest tests/test_db.py
@@ -7,7 +7,7 @@ Ejecutar desde la raíz:  python -m pytest tests/test_db.py
 
 import pytest
 
-from wm_central.db import BD
+from WM_Central.db import BD
 
 
 @pytest.fixture

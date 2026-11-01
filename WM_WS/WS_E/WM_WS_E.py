@@ -2,8 +2,8 @@
 WM_WS_E · Engine de una Watering Station (WS).
 
 Uso (siempre desde la raíz del repositorio):
-    python -m wm_ws.WS_E.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto> [--estado CARPETA]
-    python -m wm_ws.WS_E.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
+    python -m WM_WS.WS_E.WM_WS_E <ip_broker:puerto> <ip_monitor:puerto> [--estado CARPETA]
+    python -m WM_WS.WS_E.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
 
 Orden de arranque: primero el Monitor (WM_WS_M) y después el Engine.
 

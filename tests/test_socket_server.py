@@ -12,10 +12,10 @@ import time
 
 import pytest
 
-from wm_central.WM_Central import Central
-from wm_central.db import BD
-from wm_central.estados import Red
-from wm_central.socket_server import ServidorSockets
+from WM_Central.WM_Central import Central
+from WM_Central.db import BD
+from WM_Central.estados import Red
+from WM_Central.socket_server import ServidorSockets
 from common.protocol import ACK, ENQ, peticion
 
 

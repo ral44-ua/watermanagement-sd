@@ -2,8 +2,8 @@
 WM_Central: central de control de WaterManagement.
 
 Uso (desde la raíz del repo):
-    python -m wm_central.WM_Central <puerto> <broker ip:puerto> [opciones]
-    python -m wm_central.WM_Central 9000 127.0.0.1:9092
+    python -m WM_Central.WM_Central <puerto> <broker ip:puerto> [opciones]
+    python -m WM_Central.WM_Central 9000 127.0.0.1:9092
 
 Opciones:
     --bd RUTA          fichero SQLite (por defecto wm_central.db)
@@ -36,11 +36,11 @@ import time
 from collections import deque
 from datetime import datetime
 
-from wm_central.db import BD
-from wm_central.estados import ORDEN_ESTADOS, Red
-from wm_central.kafka_central import KafkaCentral
-from wm_central.panel_web import PanelWeb
-from wm_central.socket_server import ServidorSockets
+from WM_Central.db import BD
+from WM_Central.estados import ORDEN_ESTADOS, Red
+from WM_Central.kafka_central import KafkaCentral
+from WM_Central.panel_web import PanelWeb
+from WM_Central.socket_server import ServidorSockets
 
 # Texto que se enseña para cada estado (en BD y en Kafka va el código).
 ETIQUETAS = {

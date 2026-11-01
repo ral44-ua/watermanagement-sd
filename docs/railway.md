@@ -18,7 +18,7 @@ Dos servicios en el mismo proyecto de Railway:
 | Servicio | De dónde sale | Puertos públicos |
 |---|---|---|
 | `kafka` | imagen `apache/kafka:3.9.1` (la misma que en local) | TCP proxy → 9092 |
-| `wm-central` | este repositorio de GitHub (`wm_central/Dockerfile`) | TCP proxy → 9000 (Monitores) y dominio web → 8080 (panel) |
+| `wm-central` | este repositorio de GitHub (`WM_Central/Dockerfile`) | TCP proxy → 9000 (Monitores) y dominio web → 8080 (panel) |
 
 **Por qué TCP proxy:** Railway da por defecto direcciones web (HTTP). Kafka y
 nuestros sockets no son HTTP, son TCP. El *TCP proxy* da una dirección pública
@@ -99,7 +99,7 @@ servicio.
 2. **Variables** (*Raw Editor*):
 
    ```
-   RAILWAY_DOCKERFILE_PATH=wm_central/Dockerfile
+   RAILWAY_DOCKERFILE_PATH=WM_Central/Dockerfile
    BROKER=${{kafka.RAILWAY_TCP_PROXY_DOMAIN}}:${{kafka.RAILWAY_TCP_PROXY_PORT}}
    PUERTO_SOCKETS=9000
    PORT=8080
@@ -136,7 +136,7 @@ Con el servicio conectado al repo, **cada `push` a `main` redespliega
 CENTRAL** solo. Para que no se redespliegue cuando cambia algo que no le
 afecta (por ejemplo, el FO): *Settings → Source → Watch Paths*:
 ```
-wm_central/**
+WM_Central/**
 common/**
 requirements.txt
 ```
@@ -154,10 +154,10 @@ Con las dos direcciones de Railway (ejemplo):
 
 **PC LAB 2 · estaciones** (Monitor primero, después su Engine):
 ```bash
-python -m wm_ws.WS_M.WM_WS_M 9100 maglev.proxy.rlwy.net:41234 WS-04 --ubicacion "River Park"
-python -m wm_ws.WS_E.WM_WS_E shuttle.proxy.rlwy.net:15140 127.0.0.1:9100
-python -m wm_ws.WS_M.WM_WS_M 9101 maglev.proxy.rlwy.net:41234 WS-11 --ubicacion "Riverside Gardens"
-python -m wm_ws.WS_E.WM_WS_E shuttle.proxy.rlwy.net:15140 127.0.0.1:9101
+python -m WM_WS.WS_M.WM_WS_M 9100 maglev.proxy.rlwy.net:41234 WS-04 --ubicacion "River Park"
+python -m WM_WS.WS_E.WM_WS_E shuttle.proxy.rlwy.net:15140 127.0.0.1:9100
+python -m WM_WS.WS_M.WM_WS_M 9101 maglev.proxy.rlwy.net:41234 WS-11 --ubicacion "Riverside Gardens"
+python -m WM_WS.WS_E.WM_WS_E shuttle.proxy.rlwy.net:15140 127.0.0.1:9101
 ```
 
 **PC LAB 1 · operarios:**
@@ -170,8 +170,8 @@ La primera vez que arranca una WS, CENTRAL contesta `WS no registrada` y el
 Monitor se da de alta solo (`REGISTER`) antes de autenticarse.
 
 Con Docker (obligatorio en la corrección), los mismos argumentos en
-`docker run`: ver el apartado 2 del `README.md` y los Dockerfiles de
-`wm_ws/WS_M/`, `wm_ws/WS_E/` y `WM_FO/`.
+`docker run`: ver el apartado 2 del `Readme.md` y los Dockerfiles de
+`WM_WS/WS_M/`, `WM_WS/WS_E/` y `WM_FO/`.
 
 ---
 

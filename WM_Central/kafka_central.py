@@ -24,7 +24,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 
-from wm_central import estados as e
+from WM_Central import estados as e
 from common import kafka_utils as ku
 from common import mensajes as m
 
@@ -415,7 +415,7 @@ class KafkaCentral:
 
     # ------------------------------------- órdenes del operador de CENTRAL
     # Punto 11 del enunciado: iniciar un riego, bloquear o activar, para una
-    # WS o para todas. Las llama el panel web (wm_central/panel_web.py).
+    # WS o para todas. Las llama el panel web (WM_Central/panel_web.py).
     # "Todas" = un mensaje por estación (contrato).
     def iniciar_riego(self, ws_id, duracion_s) -> None:
         """Riego pedido desde CENTRAL: mismo camino que el de un operario,

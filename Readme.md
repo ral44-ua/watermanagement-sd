@@ -15,9 +15,9 @@ Autores: ver `Nombres.txt`.
 ## Estructura
 
 ```
-wm_central/      CENTRAL: WM_Central.py, sockets, Kafka, BD, panel web, Dockerfile
-wm_ws/WS_M/      Monitor de una WS (WM_WS_M.py) + Dockerfile
-wm_ws/WS_E/      Engine de una WS (WM_WS_E.py) + Dockerfile
+WM_Central/      CENTRAL: WM_Central.py, sockets, Kafka, BD, panel web, Dockerfile
+WM_WS/WS_M/      Monitor de una WS (WM_WS_M.py) + Dockerfile
+WM_WS/WS_E/      Engine de una WS (WM_WS_E.py) + Dockerfile
 WM_FO/           Aplicación del operario (WM_FO.py, peticiones.txt) + Dockerfile
 common/          Código compartido: protocolo de tramas, mensajes Kafka, utilidades
 tests/           Tests (pytest), sin necesidad de Kafka
@@ -48,8 +48,8 @@ Cada `push` a `main` redespliega CENTRAL (CI/CD VS Code → GitHub → Railway).
 En cada PC, una vez, desde la raíz del repo:
 
 ```bash
-docker build -f wm_ws/WS_M/Dockerfile -t wm-ws-m .
-docker build -f wm_ws/WS_E/Dockerfile -t wm-ws-e .
+docker build -f WM_WS/WS_M/Dockerfile -t wm-ws-m .
+docker build -f WM_WS/WS_E/Dockerfile -t wm-ws-e .
 docker build -f WM_FO/Dockerfile     -t wm-fo .
 docker network create wm          # red para que el Engine encuentre a su Monitor
 ```
@@ -84,9 +84,9 @@ python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\act
 pip install -r requirements.txt
 
 docker compose up -d                                  # Kafka local
-python -m wm_central.WM_Central 9000 127.0.0.1:9092   # panel web en http://127.0.0.1:8080
-python -m wm_ws.WS_M.WM_WS_M 9100 127.0.0.1:9000 WS-04 --ubicacion "River Park"
-python -m wm_ws.WS_E.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
+python -m WM_Central.WM_Central 9000 127.0.0.1:9092   # panel web en http://127.0.0.1:8080
+python -m WM_WS.WS_M.WM_WS_M 9100 127.0.0.1:9000 WS-04 --ubicacion "River Park"
+python -m WM_WS.WS_E.WM_WS_E 127.0.0.1:9092 127.0.0.1:9100
 python -m WM_FO.WM_FO 127.0.0.1:9092 FO-12
 ```
 

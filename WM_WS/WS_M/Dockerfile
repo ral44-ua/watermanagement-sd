@@ -1,7 +1,7 @@
 # Imagen de WM_WS_M (Monitor de una Watering Station).
 #
 # Se construye desde la RAÍZ del repo, porque necesita también common/:
-#     docker build -f wm_ws/WS_M/Dockerfile -t wm-ws-m .
+#     docker build -f WM_WS/WS_M/Dockerfile -t wm-ws-m .
 #
 # Ejecutar (los argumentos son los mismos que con python -m):
 #     docker network create wm                      (una vez por PC)
@@ -27,12 +27,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY common/ common/
-COPY wm_ws/__init__.py wm_ws/__init__.py
-COPY wm_ws/WS_M/ wm_ws/WS_M/
+COPY WM_WS/__init__.py WM_WS/__init__.py
+COPY WM_WS/WS_M/ WM_WS/WS_M/
 
 # Puerto donde espera a su Engine (informativo: el real es el primer argumento).
 EXPOSE 9100
 
 # ENTRYPOINT + argumentos de "docker run": todo se parametriza al arrancar,
 # sin reconstruir la imagen.
-ENTRYPOINT ["python", "-m", "wm_ws.WS_M.WM_WS_M"]
+ENTRYPOINT ["python", "-m", "WM_WS.WS_M.WM_WS_M"]
