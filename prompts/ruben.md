@@ -1,37 +1,37 @@
 # Prompts de IA usados por Rubén
 
-> El enunciado obliga a subir a `prompts/` los prompts de IA usados.
-> Añade aquí cada prompt nuevo, con la fecha y el commit al que corresponde.
 
-## 2026-10-22 · Claude · R1–R3 (protocolo, Monitor y Engine por sockets)
-
-Contexto que se le dio a la IA: `CONTEXTO.md`, el documento de contratos entre módulos, el enunciado de la práctica, el tutorial de Kafka con Docker y la presentación de Kafka.
-
-1. «Soy ruben y voy a empezar con mi parte del proyecto, guiame y dime porque hacer cada cosa» (R1)
-2. «entonces tengo que subir ese archivo ?»
-3. «y para que sirve el otro archivo?»
-4. «pero esos comandos son para la rama main no para la mia»
+## · R1–R3 (protocolo, Monitor y Engine por sockets)
+1. «Explícame cómo funciona la comunicación mediante sockets TCP entre el Monitor y CENTRAL y qué información deben intercambiar».
+2. «Soy ruben y voy a empezar con mi parte del proyecto, guiame.»
+3. «entonces tengo que subir ese archivo ?»
+4. «¿Cómo puedo comprobar que el Monitor detecta correctamente cuando el Engine se desconecta o deja de enviar información?».
 5. «puedo hacer la R2 si la D1?»
-6. «hazme r2» (R2)
-7. «donde van los dos archivos?»
-8. Se pegó el error de `socket.timeout` al ejecutar `fake_central` con Python 3.9 (corrección de R2).
-9. «que se supone que tiene que pasar cuando pongo los comandos?»
-10. Captura de las dos terminales: «asi se ha quedado» (corrección del puerto compartido en Windows).
-11. «como llamo a este commit?»
-12. «el R3 depende de alguna parte de david?» / «si» (R3)
-13. «donde va el archivo» / «puedo probar que funcionan estos archivos?»
-14. «R4 depende de alguno ?» / «con el gitpush ya se deberia mostrar en el repositorio de github?»
+6. «donde van los dos archivos?»
+7. «¿Cómo puedo evitar que el Engine vuelva a ejecutar órdenes antiguas cuando se reinicia?».
+8. «como llamo a este commit?»
+9. «el R3 depende de alguna parte de david?»
+10. «donde va el archivo» / «puedo probar que funcionan estos archivos?»
+11. «R4 depende de alguno ?» / «con el gitpush ya se deberia mostrar en el repositorio de github?»
+12. «Revisa los posibles errores de mi implementación y propón pruebas para comprobar que el sistema sigue funcionando cuando se desconecta o reinicia alguno de sus componentes».
 
-## 2026-10-23 / 2026-10-27 · Claude · R4 (Engine con Kafka)
+## · (Engine con Kafka) y estructura de carpetas
 
-15. «vale , d1 ya esta hecho , como junto lo mio con lo que ha hecho mi compañero y seguimos con lo siguiente?» (limpieza antes de fusionar, Kafka local y R4)
-16. «Voy a hacer R4 asi que dime como juntar mi rama con la suya y hazme lo necesario para completar R4» (pasos para fusionar las ramas y ficheros finales de R4)
+13. «vale , d1 ya esta hecho , como junto lo mio con lo que ha hecho mi compañero y seguimos con lo siguiente?»
+14. «Ayúdame a implementar un consumidor Kafka en el Engine que reciba las órdenes de riego enviadas por CENTRAL y procese cada mensaje correctamente».
+15. «¿Cómo puedo configurar los topics de Kafka que necesita el Engine para recibir órdenes y enviar información de telemetría?».
+16. «Ayúdame a implementar el procesamiento de mensajes JSON recibidos desde Kafka, comprobando que contienen los campos necesarios antes de ejecutar una orden»
+17. «Ayúdame a crear un fichero de configuración para el Engine donde pueda definir la dirección del broker Kafka, los nombres de los topics y otros parámetros necesarios sin tener que modificar el código».
 
-Qué se hizo con las respuestas: se revisó el código y se probó antes de subirlo (tests con pytest, pruebas a mano con el CENTRAL falso, el Monitor y el Engine, y con Kafka). Las pruebas de R4 detectaron que un Engine reiniciado volvía a ejecutar órdenes START antiguas; se corrigió.
+## · Fusión de R4, R5 (FO) y reestructuración
 
-## 2026-10-28 · Claude · Fusión de R4 y R5 (FO)
+18. «Metete al repositorio de github y dime como va el proyecto y que me falta a mi como ruben»
+19. «ayudame a fusionar R4 y hacemos R5»
+20. «¿Cómo puedo fusionar correctamente las funcionalidades de R4 y R5 del Front Office?»
+21. «Revisa la estructura del proyecto y propón mejoras para facilitar su mantenimiento»
 
-17. «Metete al repositorio de github y dime como va el proyecto y que me falta a mi como ruben»
-18. «ayudame a fusionar R4 y hacemos R5» (R5: `fo/WM_FO.py`, `fo/peticiones.txt`, `tests/test_fo.py`)
+Pruebas de R5: tests de la lectura del fichero con pytest, y prueba completa con Kafka y un
+CENTRAL falso que contesta a las peticiones (modo fichero con una petición aceptada, una
+denegada y una línea errónea; modo manual).
 
-Pruebas de R5: tests de la lectura del fichero con pytest, y prueba completa con Kafka y un CENTRAL falso que contesta a las peticiones (modo fichero con una petición aceptada, una denegada y una línea errónea; modo manual).
+
